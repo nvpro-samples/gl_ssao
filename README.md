@@ -31,9 +31,9 @@ This sample implements screen space ambient occlusion (SSAO) using horizon-based
 
 #### Performance
 
-The cache-aware technique pays off on larger AO radii, as then the classic approach suffers from greater divergence in texture fetches. For small radii the classic approaches simpler setup may win, however larger radii are preferred for quality.
+The cache-aware technique pays off on larger AO radii or higher resolutions (full HD).
 
-Timings in microseconds via GL timer query taken on a Quadro K6000, no MSAA.
+Timings in microseconds via GL timer query taken on a Quadro K6000, no MSAA, 720p. On higher resolution than the sample's default the benefit will increase further.
 
 *Classic*
 
