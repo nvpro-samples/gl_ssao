@@ -38,30 +38,22 @@ Timings in microseconds via GL timer query taken on a Quadro K6000, no MSAA, 720
 *Classic*
 
 ```
-Timer Frame;   GL   1879;
-Timer Scene;   GL    174;
-Timer ssao;    GL   1508;
+Timer ssao;             GL   1508;
   Timer linearize;      GL     34;
   Timer ssaocalc;       GL   1347;
   Timer ssaoblur;       GL    122;
-Timer Blit;    GL     53;
-Timer TwDraw;  GL    137;
 ```
 
 *Cache-Aware*
 
 ```
-Timer Frame;     GL   1449;
-  Timer Scene;   GL    174;
-  Timer ssao;    GL   1077;
-   Timer linearize;      GL     34;
-   Timer viewnormal;     GL     53;
-   Timer deinterleave;   GL     59;
-   Timer ssaocalc;       GL    765;
-   Timer reinterleave;   GL     52;
-   Timer ssaoblur;       GL    104;
-  Timer Blit;    GL     56;
-  Timer TwDraw;  GL    135;
+Timer ssao;             GL   1077;
+  Timer linearize;      GL     34;
+  Timer viewnormal;     GL     53;
+  Timer deinterleave;   GL     59;
+  Timer ssaocalc;       GL    765;
+  Timer reinterleave;   GL     52;
+  Timer ssaoblur;       GL    104;
 ```
 
 #### Sample Highlights
