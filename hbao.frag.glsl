@@ -24,7 +24,9 @@ https://github.com/NVIDIAGameWorks/D3DSamples/tree/master/samples/DeinterleavedT
 #define AO_BLUR 1
 #endif
 
-#define AO_RANDOMTEX_SIZE 4
+#ifndef AO_LAYERED
+#define AO_LAYERED 1
+#endif
 
 #define M_PI 3.14159265f
 
@@ -32,21 +34,59 @@ https://github.com/NVIDIAGameWorks/D3DSamples/tree/master/samples/DeinterleavedT
 const float  NUM_STEPS = 4;
 const float  NUM_DIRECTIONS = 8; // texRandom/g_Jitter initialization depends on this
 
-#if AO_DEINTERLEAVED
-  layout(location=0) uniform vec2 g_Float2Offset;
-  layout(location=1) uniform vec4 g_Jitter;
-  layout(binding=0) uniform sampler2D texLinearDepth;
-  layout(binding=1) uniform sampler2D texViewNormal;
-#else
-  layout(binding=0) uniform sampler2D texLinearDepth;
-  layout(binding=1) uniform sampler2D texRandom;
-#endif
-
 layout(std140,binding=0) uniform controlBuffer {
   HBAOData   control;
 };
 
-layout(location=0,index=0) out vec4 out_Color;
+#if AO_DEINTERLEAVED
+
+#if AO_LAYERED
+  vec2 g_Float2Offset = control.float2Offsets[gl_PrimitiveID].xy;
+  vec4 g_Jitter       = control.jitters[gl_PrimitiveID];
+  
+  layout(binding=0) uniform sampler2DArray texLinearDepth;
+  layout(binding=1) uniform sampler2D texViewNormal;
+#if AO_BLUR
+  layout(binding=0,rg16f) uniform image2DArray imgOutput;
+#else
+  layout(binding=0,r8) uniform image2DArray imgOutput;
+#endif
+
+  vec3 getQuarterCoord(vec2 UV){
+    return vec3(UV,float(gl_PrimitiveID));
+  }
+  
+  void outputColor(vec4 color) {
+    imageStore(imgOutput, ivec3(ivec2(gl_FragCoord.xy),gl_PrimitiveID), color);
+  }
+#else
+  layout(location=0) uniform vec2 g_Float2Offset;
+  layout(location=1) uniform vec4 g_Jitter;
+  
+  layout(binding=0) uniform sampler2D texLinearDepth;
+  layout(binding=1) uniform sampler2D texViewNormal;
+  
+  vec2 getQuarterCoord(vec2 UV){
+    return UV;
+  }
+
+  layout(location=0,index=0) out vec4 out_Color;
+  
+  void outputColor(vec4 color) {
+    out_Color = color;
+  }
+#endif
+  
+#else
+  layout(binding=0) uniform sampler2D texLinearDepth;
+  layout(binding=1) uniform sampler2D texRandom;
+  
+  layout(location=0,index=0) out vec4 out_Color;
+  
+  void outputColor(vec4 color) {
+    out_Color = color;
+  }
+#endif
 
 in vec2 texCoord;
 
@@ -61,7 +101,7 @@ vec3 UVToView(vec2 uv, float eye_z)
 
 vec3 FetchQuarterResViewPos(vec2 UV)
 {
-  float ViewDepth = textureLod(texLinearDepth,UV,0).x;
+  float ViewDepth = textureLod(texLinearDepth,getQuarterCoord(UV),0).x;
   return UVToView(UV, ViewDepth);
 }
 
@@ -203,9 +243,9 @@ void main()
   float AO = ComputeCoarseAO(uv, RadiusPixels, Rand, ViewPosition, ViewNormal);
 
 #if AO_BLUR
-  out_Color = vec4(pow(AO, control.PowExponent), ViewPosition.z, 0, 0);
+  outputColor(vec4(pow(AO, control.PowExponent), ViewPosition.z, 0, 0));
 #else
-  out_Color = vec4(pow(AO, control.PowExponent));
+  outputColor(vec4(pow(AO, control.PowExponent)));
 #endif
   
 }

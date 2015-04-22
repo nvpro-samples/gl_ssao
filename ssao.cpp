@@ -1,5 +1,5 @@
 /*-----------------------------------------------------------------------
-  Copyright (c) 2014-2015, NVIDIA. All rights reserved.
+  Copyright (c) 2014, NVIDIA. All rights reserved.
 
   Redistribution and use in source and binary forms, with or without
   modification, are permitted provided that the following conditions
@@ -40,8 +40,13 @@
 
 #include <noise/MersenneTwister.h>
 
-#define USE_AO_SPECIALBLUR 1
+// optimizes blur, by storing depth along with ssao calculation
+// avoids accessing two different textures
+#define USE_AO_SPECIALBLUR          1
 
+// optimizes the cache-aware technique by rendering all temporary layers at once
+// instead of individually
+#define USE_AO_LAYERED_SINGLEPASS   1
 
 using namespace nv_helpers;
 using namespace nv_helpers_gl;
@@ -50,13 +55,18 @@ using namespace nv_math;
 
 namespace ssao
 {
+#if 1
   int const SAMPLE_SIZE_WIDTH(1280);
   int const SAMPLE_SIZE_HEIGHT(720);
+#else
+  int const SAMPLE_SIZE_WIDTH(1920);
+  int const SAMPLE_SIZE_HEIGHT(1080);
+#endif
   int const SAMPLE_MAJOR_VERSION(4);
   int const SAMPLE_MINOR_VERSION(3);
 
   static const int  NUM_MRT = 8;
-  static const int  HBAO_RANDOM_SIZE = 4;
+  static const int  HBAO_RANDOM_SIZE = AO_RANDOMTEX_SIZE;
   static const int  HBAO_RANDOM_ELEMENTS = HBAO_RANDOM_SIZE*HBAO_RANDOM_SIZE;
   static const int  MAX_SAMPLES = 8;
 
@@ -239,6 +249,8 @@ namespace ssao
 
     progManager.registerInclude("common.h", "common.h");
 
+    progManager.m_prepend = ProgramManager::format("#define AO_LAYERED %d\n", USE_AO_LAYERED_SINGLEPASS ? 1 : 0);
+
     programs.draw_scene = progManager.createProgram(
       ProgramManager::Definition(GL_VERTEX_SHADER,          "scene.vert.glsl"),
       ProgramManager::Definition(GL_FRAGMENT_SHADER,        "scene.frag.glsl"));
@@ -312,7 +324,7 @@ namespace ssao
 
     rng.seed((unsigned)0);
 
-    signed short f[HBAO_RANDOM_ELEMENTS*MAX_SAMPLES*4];
+    signed short hbaoRandomShort[HBAO_RANDOM_ELEMENTS*MAX_SAMPLES*4];
 
     for(int i=0; i<HBAO_RANDOM_ELEMENTS*MAX_SAMPLES; i++)
     {
@@ -326,17 +338,17 @@ namespace ssao
       hbaoRandom[i].z = Rand2;
       hbaoRandom[i].w = 0;
 #define SCALE ((1<<15))
-      f[i*4+0] = (signed short)(SCALE*hbaoRandom[i].x);
-      f[i*4+1] = (signed short)(SCALE*hbaoRandom[i].y);
-      f[i*4+2] = (signed short)(SCALE*hbaoRandom[i].z);
-      f[i*4+3] = (signed short)(SCALE*hbaoRandom[i].w);
+      hbaoRandomShort[i*4+0] = (signed short)(SCALE*hbaoRandom[i].x);
+      hbaoRandomShort[i*4+1] = (signed short)(SCALE*hbaoRandom[i].y);
+      hbaoRandomShort[i*4+2] = (signed short)(SCALE*hbaoRandom[i].z);
+      hbaoRandomShort[i*4+3] = (signed short)(SCALE*hbaoRandom[i].w);
 #undef SCALE
     }
 
     newTexture(textures.hbao_random);
     glBindTexture(GL_TEXTURE_2D_ARRAY,textures.hbao_random);
     glTexStorage3D (GL_TEXTURE_2D_ARRAY,1,GL_RGBA16_SNORM,HBAO_RANDOM_SIZE,HBAO_RANDOM_SIZE,MAX_SAMPLES);
-    glTexSubImage3D(GL_TEXTURE_2D_ARRAY,0,0,0,0, HBAO_RANDOM_SIZE,HBAO_RANDOM_SIZE,MAX_SAMPLES,GL_RGBA,GL_SHORT,f);
+    glTexSubImage3D(GL_TEXTURE_2D_ARRAY,0,0,0,0, HBAO_RANDOM_SIZE,HBAO_RANDOM_SIZE,MAX_SAMPLES,GL_RGBA,GL_SHORT,hbaoRandomShort);
     glTexParameteri(GL_TEXTURE_2D_ARRAY,GL_TEXTURE_MIN_FILTER,GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D_ARRAY,GL_TEXTURE_MAG_FILTER,GL_NEAREST);
     glBindTexture(GL_TEXTURE_2D_ARRAY,0);
@@ -583,6 +595,14 @@ namespace ssao
     glBindFramebuffer(GL_FRAMEBUFFER,0);
 
     newFramebuffer(fbos.hbao2_calc);
+    glBindFramebuffer(GL_FRAMEBUFFER,fbos.hbao2_calc);
+#if USE_AO_LAYERED_SINGLEPASS
+    // this fbo will not have any attachments and therefore requires rasterizer to be configured
+    // through default parameters
+    glFramebufferParameteri(GL_FRAMEBUFFER, GL_FRAMEBUFFER_DEFAULT_WIDTH,  quarterWidth);
+    glFramebufferParameteri(GL_FRAMEBUFFER, GL_FRAMEBUFFER_DEFAULT_HEIGHT, quarterHeight);
+#endif
+    glBindFramebuffer(GL_FRAMEBUFFER,0);
 
     return true;
   }
@@ -692,6 +712,13 @@ namespace ssao
 
     hbaoUbo.InvQuarterResolution = vec2(1.0f/float(quarterWidth),1.0f/float(quarterHeight));
     hbaoUbo.InvFullResolution = vec2(1.0f/float(width),1.0f/float(height));
+
+#if USE_AO_LAYERED_SINGLEPASS
+    for (int i = 0; i < HBAO_RANDOM_ELEMENTS; i++){
+      hbaoUbo.float2Offsets[i] = vec2(float(i % 4) + 0.5f, float(i / 4) + 0.5f);
+      hbaoUbo.jitters[i] = hbaoRandom[i];
+    }
+#endif
   }
 
   void Sample::drawLinearDepth(const Projection& projection, int width, int height, int sampleIdx)
@@ -859,6 +886,15 @@ namespace ssao
       glBindBufferBase(GL_UNIFORM_BUFFER,0,buffers.hbao_ubo);
       glNamedBufferSubDataEXT(buffers.hbao_ubo,0,sizeof(HBAOData),&hbaoUbo);
 
+#if USE_AO_LAYERED_SINGLEPASS
+      // instead of drawing to each layer individually
+      // we draw all layers at once, and use image writes to update the array texture
+      // this buys additional performance :)
+      glBindMultiTextureEXT(GL_TEXTURE0, GL_TEXTURE_2D_ARRAY, textures.hbao2_deptharray);
+      glBindImageTexture( 0, textures.hbao2_resultarray, 0, GL_TRUE, 0, GL_WRITE_ONLY, USE_AO_SPECIALBLUR ? GL_RG16F : GL_R8);
+      glDrawArrays(GL_TRIANGLES,0,3 * HBAO_RANDOM_ELEMENTS);
+      glMemoryBarrier(GL_TEXTURE_FETCH_BARRIER_BIT | GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+#else
       for (int i = 0; i < HBAO_RANDOM_ELEMENTS; i++){
         glUniform2f(0, float(i % 4) + 0.5f, float(i / 4) + 0.5f);
         glUniform4fv(1, 1, hbaoRandom[i].get_value());
@@ -868,6 +904,7 @@ namespace ssao
 
         glDrawArrays(GL_TRIANGLES,0,3);
       }
+#endif
     }
 
     {

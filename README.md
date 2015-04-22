@@ -33,32 +33,32 @@ This sample implements screen space ambient occlusion (SSAO) using horizon-based
 
 The cache-aware technique pays off on larger AO radii or higher resolutions (full HD).
 
-Timings in microseconds via GL timer query taken on a Quadro K6000, no MSAA, 720p. On higher resolution than the sample's default the benefit will increase further.
+Timings in microseconds via GL timer query taken on a Quadro M6000, no MSAA, 1080p (sample default is 720p, which may give less difference between the two).
 
 *Classic*
 
 ```
-Timer ssao;             GL   1508;
-  Timer linearize;      GL     34;
-  Timer ssaocalc;       GL   1347;
-  Timer ssaoblur;       GL    122;
+Timer ssao;            GL    2434;
+ Timer linearize;      GL      54;
+ Timer ssaocalc;       GL    2177;
+ Timer ssaoblur;       GL     198;
 ```
 
 *Cache-Aware*
 
 ```
-Timer ssao;             GL   1077;
-  Timer linearize;      GL     34;
-  Timer viewnormal;     GL     53;
-  Timer deinterleave;   GL     59;
-  Timer ssaocalc;       GL    765;
-  Timer reinterleave;   GL     52;
-  Timer ssaoblur;       GL    104;
+Timer ssao;            GL    1264;        
+ Timer linearize;      GL      55;
+ Timer viewnormal;     GL      76;
+ Timer deinterleave;   GL      93;
+ Timer ssaocalc;       GL     762;
+ Timer reinterleave;   GL     100;
+ Timer ssaoblur;       GL     167;
 ```
 
 #### Sample Highlights
 
-The user can change MSAA settings, blur settings and so on.
+The user can change MSAA settings, blur settings and other parameters.
 
 Key functionality is found in
 
@@ -69,6 +69,11 @@ As well as in helper functions
 
 - Sample::drawLinearDepth()
 - Sample::drawHbaoBlur()
+
+The sample contains alternate codepaths for two additional optimizations, which are enabled by default.
+
+* ```USE_AO_SPECIALBLUR```: Depth is stored with the ssao calculation, so that the blur can use a single instead of two texture fetches, which improves performance. 
+* ```USE_AO_LAYERED_SINGLEPASS```: In the cache-aware technique we update the layers of the ssao calculation all at once using image stores and attachment-les fbo, instead of rendering to each layer individually.
 
 #### Building
 Ideally clone this and other interesting [nvpro-samples](https://github.com/nvpro-samples) repositories into a common subdirectory. You will always need [shared_sources](https://github.com/nvpro-samples/shared_sources) and on Windows [shared_external](https://github.com/nvpro-samples/shared_external). The shared directories are searched either as subdirectory of the sample or one directory up. It is recommended to use the [build_all](https://github.com/nvpro-samples/build_all) cmake as entry point, it will also give you options to enable/disable individual samples when creating the solutions.

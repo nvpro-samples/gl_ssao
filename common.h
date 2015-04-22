@@ -5,6 +5,8 @@
 
 #define UBO_SCENE     0
 
+#define AO_RANDOMTEX_SIZE 4
+
 #ifdef __cplusplus
 namespace ssao
 {
@@ -36,6 +38,9 @@ struct HBAOData {
   vec2    projScale;
   int     projOrtho;
   int     _pad1;
+  
+  vec4    float2Offsets[AO_RANDOMTEX_SIZE*AO_RANDOMTEX_SIZE];
+  vec4    jitters[AO_RANDOMTEX_SIZE*AO_RANDOMTEX_SIZE];
 };
 
 #ifdef __cplusplus
