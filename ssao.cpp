@@ -1,5 +1,5 @@
 /*-----------------------------------------------------------------------
-  Copyright (c) 2014, NVIDIA. All rights reserved.
+  Copyright (c) 2014-2015, NVIDIA. All rights reserved.
 
   Redistribution and use in source and binary forms, with or without
   modification, are permitted provided that the following conditions
@@ -46,7 +46,12 @@
 
 // optimizes the cache-aware technique by rendering all temporary layers at once
 // instead of individually
-#define USE_AO_LAYERED_SINGLEPASS   1
+
+#define AO_LAYERED_OFF    0
+#define AO_LAYERED_IMAGE  1
+#define AO_LAYERED_GS     2
+
+#define USE_AO_LAYERED_SINGLEPASS   AO_LAYERED_GS
 
 using namespace nv_helpers;
 using namespace nv_helpers_gl;
@@ -55,7 +60,7 @@ using namespace nv_math;
 
 namespace ssao
 {
-#if 1
+#if 0
   int const SAMPLE_SIZE_WIDTH(1280);
   int const SAMPLE_SIZE_HEIGHT(720);
 #else
@@ -249,7 +254,7 @@ namespace ssao
 
     progManager.registerInclude("common.h", "common.h");
 
-    progManager.m_prepend = ProgramManager::format("#define AO_LAYERED %d\n", USE_AO_LAYERED_SINGLEPASS ? 1 : 0);
+    progManager.m_prepend = ProgramManager::format("#define AO_LAYERED %d\n", USE_AO_LAYERED_SINGLEPASS);
 
     programs.draw_scene = progManager.createProgram(
       ProgramManager::Definition(GL_VERTEX_SHADER,          "scene.vert.glsl"),
@@ -293,10 +298,16 @@ namespace ssao
 
     programs.hbao2_calc = progManager.createProgram(
       ProgramManager::Definition(GL_VERTEX_SHADER,          "fullscreenquad.vert.glsl"),
+#if USE_AO_LAYERED_SINGLEPASS == AO_LAYERED_GS
+      ProgramManager::Definition(GL_GEOMETRY_SHADER,        "fullscreenquad.geo.glsl"),
+#endif
       ProgramManager::Definition(GL_FRAGMENT_SHADER,        "#define AO_DEINTERLEAVED 1\n#define AO_BLUR 0\n", "hbao.frag.glsl"));
 
     programs.hbao2_calc_blur = progManager.createProgram(
       ProgramManager::Definition(GL_VERTEX_SHADER,          "fullscreenquad.vert.glsl"),
+#if USE_AO_LAYERED_SINGLEPASS == AO_LAYERED_GS
+      ProgramManager::Definition(GL_GEOMETRY_SHADER,        "fullscreenquad.geo.glsl"),
+#endif
       ProgramManager::Definition(GL_FRAGMENT_SHADER,        "#define AO_DEINTERLEAVED 1\n#define AO_BLUR 1\n", "hbao.frag.glsl"));
 
     programs.hbao2_deinterleave = progManager.createProgram(
@@ -596,11 +607,14 @@ namespace ssao
 
     newFramebuffer(fbos.hbao2_calc);
     glBindFramebuffer(GL_FRAMEBUFFER,fbos.hbao2_calc);
-#if USE_AO_LAYERED_SINGLEPASS
+#if USE_AO_LAYERED_SINGLEPASS == AO_LAYERED_IMAGE
     // this fbo will not have any attachments and therefore requires rasterizer to be configured
     // through default parameters
     glFramebufferParameteri(GL_FRAMEBUFFER, GL_FRAMEBUFFER_DEFAULT_WIDTH,  quarterWidth);
     glFramebufferParameteri(GL_FRAMEBUFFER, GL_FRAMEBUFFER_DEFAULT_HEIGHT, quarterHeight);
+#endif
+#if USE_AO_LAYERED_SINGLEPASS == AO_LAYERED_GS
+    glFramebufferTexture(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, textures.hbao2_resultarray, 0);
 #endif
     glBindFramebuffer(GL_FRAMEBUFFER,0);
 
@@ -890,10 +904,15 @@ namespace ssao
       // instead of drawing to each layer individually
       // we draw all layers at once, and use image writes to update the array texture
       // this buys additional performance :)
+
       glBindMultiTextureEXT(GL_TEXTURE0, GL_TEXTURE_2D_ARRAY, textures.hbao2_deptharray);
+#if USE_AO_LAYERED_SINGLEPASS == AO_LAYERED_IMAGE
       glBindImageTexture( 0, textures.hbao2_resultarray, 0, GL_TRUE, 0, GL_WRITE_ONLY, USE_AO_SPECIALBLUR ? GL_RG16F : GL_R8);
+#endif
       glDrawArrays(GL_TRIANGLES,0,3 * HBAO_RANDOM_ELEMENTS);
+#if USE_AO_LAYERED_SINGLEPASS == AO_LAYERED_IMAGE
       glMemoryBarrier(GL_TEXTURE_FETCH_BARRIER_BIT | GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+#endif
 #else
       for (int i = 0; i < HBAO_RANDOM_ELEMENTS; i++){
         glUniform2f(0, float(i % 4) + 0.5f, float(i / 4) + 0.5f);

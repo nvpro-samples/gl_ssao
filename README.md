@@ -73,7 +73,7 @@ As well as in helper functions
 The sample contains alternate codepaths for two additional optimizations, which are enabled by default.
 
 * ```USE_AO_SPECIALBLUR```: Depth is stored with the ssao calculation, so that the blur can use a single instead of two texture fetches, which improves performance. 
-* ```USE_AO_LAYERED_SINGLEPASS```: In the cache-aware technique we update the layers of the ssao calculation all at once using image stores and attachment-les fbo, instead of rendering to each layer individually.
+* ```USE_AO_LAYERED_SINGLEPASS```: In the cache-aware technique we update the layers of the ssao calculation all at once using image stores and attachment-les fbo or a geometry shader with layers, instead of rendering to each layer individually.
 
 #### Building
 Ideally clone this and other interesting [nvpro-samples](https://github.com/nvpro-samples) repositories into a common subdirectory. You will always need [shared_sources](https://github.com/nvpro-samples/shared_sources) and on Windows [shared_external](https://github.com/nvpro-samples/shared_external). The shared directories are searched either as subdirectory of the sample or one directory up. It is recommended to use the [build_all](https://github.com/nvpro-samples/build_all) cmake as entry point, it will also give you options to enable/disable individual samples when creating the solutions.

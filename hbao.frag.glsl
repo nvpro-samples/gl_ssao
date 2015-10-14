@@ -46,19 +46,28 @@ layout(std140,binding=0) uniform controlBuffer {
   
   layout(binding=0) uniform sampler2DArray texLinearDepth;
   layout(binding=1) uniform sampler2D texViewNormal;
-#if AO_BLUR
-  layout(binding=0,rg16f) uniform image2DArray imgOutput;
-#else
-  layout(binding=0,r8) uniform image2DArray imgOutput;
-#endif
 
   vec3 getQuarterCoord(vec2 UV){
     return vec3(UV,float(gl_PrimitiveID));
   }
+  #if AO_LAYERED == 1
   
-  void outputColor(vec4 color) {
-    imageStore(imgOutput, ivec3(ivec2(gl_FragCoord.xy),gl_PrimitiveID), color);
-  }
+    #if AO_BLUR
+      layout(binding=0,rg16f) uniform image2DArray imgOutput;
+    #else
+      layout(binding=0,r8) uniform image2DArray imgOutput;
+    #endif
+
+    void outputColor(vec4 color) {
+      imageStore(imgOutput, ivec3(ivec2(gl_FragCoord.xy),gl_PrimitiveID), color);
+    }
+  #else
+    layout(location=0,index=0) out vec4 out_Color;
+  
+    void outputColor(vec4 color) {
+      out_Color = color;
+    }
+  #endif
 #else
   layout(location=0) uniform vec2 g_Float2Offset;
   layout(location=1) uniform vec4 g_Jitter;
@@ -252,7 +261,7 @@ void main()
 
 
 /*-----------------------------------------------------------------------
-  Copyright (c) 2014, NVIDIA. All rights reserved.
+  Copyright (c) 2014-2015, NVIDIA. All rights reserved.
 
   Redistribution and use in source and binary forms, with or without
   modification, are permitted provided that the following conditions
