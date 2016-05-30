@@ -168,6 +168,7 @@ namespace ssao
         , bias(0.1f)
         , blur(1)
         , blurSharpness(40.0f)
+        , ortho(false)
       {}
 
       int             samples;
@@ -177,6 +178,7 @@ namespace ssao
       float           radius;
       int             blur;
       float           blurSharpness;
+      bool            ortho;
     };
 
     Tweak      tweak;
@@ -184,29 +186,40 @@ namespace ssao
     uint       sceneTriangleIndices;
     uint       sceneObjects;
 
-    vec4f      hbaoRandom[HBAO_RANDOM_ELEMENTS * MAX_SAMPLES];
-
     struct Projection {
       float nearplane;
       float farplane;
       float fov;
+      float orthoheight;
+      bool  ortho;
       mat4  matrix;
 
       Projection()
         : nearplane(0.1f)
         , farplane(100.0f)
         , fov((45.f))
+        , orthoheight(1.0f)
+        , ortho(false)
       {
 
       }
 
       void update(int width, int height){
-        matrix =  nv_math::perspective(fov, float(width)/float(height), nearplane, farplane);
+        float aspect = float(width) / float(height);
+        if (ortho){
+          matrix = nv_math::ortho(-orthoheight*0.5f*aspect, orthoheight*0.5f*aspect, -orthoheight*0.5f, orthoheight*0.5f, nearplane, farplane);
+        }
+        else{
+          matrix = nv_math::perspective(fov, aspect, nearplane, farplane);
+        }
       }
     };
 
+    Projection projection;
+
     SceneData  sceneUbo;
     HBAOData   hbaoUbo;
+    vec4f      hbaoRandom[HBAO_RANDOM_ELEMENTS * MAX_SAMPLES];
 
     bool begin();
     void think(double time);
@@ -664,6 +677,7 @@ namespace ssao
 
     TwAddVarRW(bar, "samples",  samplesType, &tweak.samples, " label='msaa' ");
     TwAddVarRW(bar, "algorithm",  algorithmType, &tweak.algorithm, " label='ssao algorithm' ");
+    TwAddVarRW(bar, "ortho", TW_TYPE_BOOLCPP, &tweak.ortho, " label='orthographic' ");
     TwAddVarRW(bar, "radius",  TW_TYPE_FLOAT, &tweak.radius, " label='radius' step=0.1 min=0 precision=2 ");
     TwAddVarRW(bar, "intensity",  TW_TYPE_FLOAT, &tweak.intensity, " label='intensity' min=0 step=0.1 ");
     TwAddVarRW(bar, "bias",  TW_TYPE_FLOAT, &tweak.bias, " label='bias' min=0 step=0.1 max=0.1");
@@ -672,8 +686,13 @@ namespace ssao
 
     m_control.m_sceneOrbit = vec3(0.0f);
     m_control.m_sceneDimension = float(globalscale);
-    m_control.m_viewMatrix = nv_math::look_at(m_control.m_sceneOrbit - (vec3(0.4f,-0.35f,-0.6f)*m_control.m_sceneDimension*0.5f), m_control.m_sceneOrbit, vec3(0,1,0));
+    m_control.m_sceneOrthoZoom = m_control.m_sceneDimension;
+    m_control.m_viewMatrix = nv_math::look_at(m_control.m_sceneOrbit - (vec3(0.4f,-0.35f,-0.6f)*m_control.m_sceneDimension*0.9f), m_control.m_sceneOrbit, vec3(0,1,0));
     
+    projection.nearplane = m_control.m_sceneDimension * 0.01f;
+    projection.farplane  = m_control.m_sceneDimension * 10.0f;
+
+
     return validated;
   }
 
@@ -690,19 +709,19 @@ namespace ssao
     };
 
     float projInfoOrtho[] = {
-      2.0f / ( P[4*0+0]),      // ((x)  * R - L)
+      2.0f / ( P[4*0+0]),      // ((x) * R - L)
       2.0f / ( P[4*1+1]),      // ((y) * T - B)
       -( 1.0f + P[4*3+0]) / P[4*0+0], // L
       -( 1.0f - P[4*3+1]) / P[4*1+1], // B
     };
 
-    int useOrtho = 0;
+    int useOrtho = projection.ortho ? 1 : 0;
     hbaoUbo.projOrtho = useOrtho;
     hbaoUbo.projInfo  = useOrtho ? projInfoOrtho : projInfoPerspective;
 
     float projScale;
     if (useOrtho){
-      projScale = float(height) / ( 8.0f /* FIXME need proper values for ortho */ );
+      projScale = float(height) / (projInfoOrtho[1]);
     }
     else {
       projScale = float(height) / (tanf( projection.fov * 0.5f) * 2.0f);
@@ -742,7 +761,7 @@ namespace ssao
 
     if (tweak.samples > 1){
       glUseProgram(progManager.get(programs.depth_linearize_msaa));
-      glUniform4f(0,projection.nearplane * projection.farplane, projection.nearplane-projection.farplane, projection.farplane, 1.0f);
+      glUniform4f(0, projection.nearplane * projection.farplane, projection.nearplane - projection.farplane, projection.farplane, projection.ortho ? 0.0f : 1.0f);
       glUniform1i(1,sampleIdx);
 
       glBindMultiTextureEXT(GL_TEXTURE0, GL_TEXTURE_2D_MULTISAMPLE, textures.scene_depthstencil);
@@ -751,7 +770,7 @@ namespace ssao
     }
     else{
       glUseProgram(progManager.get(programs.depth_linearize));
-      glUniform4f(0,projection.nearplane * projection.farplane, projection.nearplane-projection.farplane, projection.farplane, 1.0f);
+      glUniform4f(0, projection.nearplane * projection.farplane, projection.nearplane - projection.farplane, projection.farplane, projection.ortho ? 0.0f : 1.0f);
 
       glBindMultiTextureEXT(GL_TEXTURE0, GL_TEXTURE_2D, textures.scene_depthstencil);
       glDrawArrays(GL_TRIANGLES,0,3);
@@ -972,6 +991,7 @@ namespace ssao
 
   void Sample::think(double time)
   {
+    m_control.m_sceneOrtho = tweak.ortho;
     m_control.processActions(m_window.m_viewsize,
       nv_math::vec2f(m_window.m_mouseCurrent[0],m_window.m_mouseCurrent[1]),
       m_window.m_mouseButtonFlags, m_window.m_wheel);
@@ -987,7 +1007,8 @@ namespace ssao
     int width   = m_window.m_viewsize[0];
     int height  = m_window.m_viewsize[1];
 
-    Projection projection;
+    projection.ortho       = m_control.m_sceneOrtho;
+    projection.orthoheight = m_control.m_sceneOrthoZoom;
     projection.update(width,height);
 
     if (tweakLast.samples != tweak.samples){
