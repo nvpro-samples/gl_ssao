@@ -13,6 +13,7 @@ This sample implements screen space ambient occlusion (SSAO) using horizon-based
  - As the sampling radius depends on the pixel's depth, a big variability in the texture lookups can exist from one pixel to another. 
  - To reduce the costs the effect can be computed at lower-resolution and up-scaled for final display. As AO is typically a low-frequency effect this often can be sufficient.
  - Dithering artifacts can occur due to the 4x4 texture tiling. The image is blurred using cross-bilateral filtering that takes the depth values into account, to further improve quality.
+
 *HBAO - Cache-Aware*:
  - The performance is vastly improved by grouping all pixels that share the same direction values. This means the screen-space linear depth buffer is stored in 16 layers each representing one direction of the 4x4 texture. Each layer has a quarter of the original resolution. The total amount of pixels is not reduced, but the sampling is performed in equal directions for the entire layer, yielding better texture cache utilization.
  - Linearizing the depth-buffer now stores into 16 texture layers.
