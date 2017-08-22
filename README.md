@@ -7,24 +7,24 @@ This sample implements screen space ambient occlusion (SSAO) using horizon-based
 > Note: This sample provides an improved HBAO algorithm, however it is not same as HBAO+ which is part of [NVIDIA ShadowWorks ](https://developer.nvidia.com/shadowworks) and improves the quality and performance of the algorithm further.
 
 
-- *HBAO - Classic*:
+*HBAO - Classic*:
  - To achieve the effect a 4x4 texture that contains random directions is tiled across the screen and used to sample the neighborhood of a pixel's depth values.
  - The distance of the sampling depends on a customize-able world-size radius, for which the depth-buffer values are typically linearized first.
  - As the sampling radius depends on the pixel's depth, a big variability in the texture lookups can exist from one pixel to another. 
  - To reduce the costs the effect can be computed at lower-resolution and up-scaled for final display. As AO is typically a low-frequency effect this often can be sufficient.
  - Dithering artifacts can occur due to the 4x4 texture tiling. The image is blurred using cross-bilateral filtering that takes the depth values into account, to further improve quality.
-- *HBAO - Cache-Aware*:
+*HBAO - Cache-Aware*:
  - The performance is vastly improved by grouping all pixels that share the same direction values. This means the screen-space linear depth buffer is stored in 16 layers each representing one direction of the 4x4 texture. Each layer has a quarter of the original resolution. The total amount of pixels is not reduced, but the sampling is performed in equal directions for the entire layer, yielding better texture cache utilization.
  - Linearizing the depth-buffer now stores into 16 texture layers.
  - The actual HBAO effect is performed in each layer individually, however all layers are independent of each other, allowing them to be processed in parallel.
  - Finally the results are stored scattered to their original locations in screen-space. 
  - Compared to the regular HBAO approach, the efficiency gains allow using the effect on full-resolution, improving the image quality. 
 
-- MSAA support:
+*MSAA support*:
  - The effect is run on a per-sample level N times (N matching the MSAA level). 
  - For each pass **glSampleMask( 1 << sample);** is used to update only the relevant samples in the target framebuffer.
 
-- Blur:
+*Blur*:
  - A cross-bilteral blur is used to eliminate the typical dithering artifacts. It makes use of the depth buffer to avoid smoothing over geometric discontinuities. 
 
 ![sample screenshot](https://github.com/nvpro-samples/gl_ssao/blob/master/doc/bluroff.jpg)
