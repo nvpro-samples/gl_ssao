@@ -76,8 +76,16 @@ The sample contains alternate codepaths for two additional optimizations, which 
 * ```USE_AO_SPECIALBLUR```: Depth is stored with the ssao calculation, so that the blur can use a single instead of two texture fetches, which improves performance. 
 * ```USE_AO_LAYERED_SINGLEPASS```: In the cache-aware technique we update the layers of the ssao calculation all at once using image stores and attachment-les fbo or a geometry shader with layers, instead of rendering to each layer individually.
 
-#### Building
+### Building
 Ideally clone this and other interesting [nvpro-samples](https://github.com/nvpro-samples) repositories into a common subdirectory. You will always need [shared_sources](https://github.com/nvpro-samples/shared_sources) and on Windows [shared_external](https://github.com/nvpro-samples/shared_external). The shared directories are searched either as subdirectory of the sample or one directory up. It is recommended to use the [build_all](https://github.com/nvpro-samples/build_all) cmake as entry point, it will also give you options to enable/disable individual samples when creating the solutions.
+
+
+### Providing Pull Requests
+NVIDIA is happy to review and consider pull requests for merging into the main tree of the nvpro-samples for bug fixes and features. Before providing a pull request to NVIDIA, please note the following:
+
+* A pull request provided to this repo by a developer constitutes permission from the developer for NVIDIA to merge the provided changes or any NVIDIA modified version of these changes to the repo. NVIDIA may remove or change the code at any time and in any way deemed appropriate.
+* Not all pull requests can be or will be accepted. NVIDIA will close pull requests that it does not intend to merge.
+The modified files and any new files must include the unmodified NVIDIA copyright header seen at the top of all shipping files.
 
 ```
     Copyright (c) 2014-2015, NVIDIA CORPORATION. All rights reserved.
