@@ -5,7 +5,6 @@
 #include "common.h"
 
 layout(triangles) in;
-layout(triangle_strip,max_vertices=3) out;
 
 #extension GL_NV_geometry_shader_passthrough : enable
 
@@ -24,7 +23,8 @@ layout(triangle_strip,max_vertices=3) out;
   }
 
 #else
-
+  
+  layout(triangle_strip,max_vertices=3) out;
 
   in Inputs {
     vec2 texCoord;
