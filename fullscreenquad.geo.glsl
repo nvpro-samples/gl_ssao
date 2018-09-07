@@ -12,10 +12,10 @@ layout(triangles) in;
 
   layout(passthrough) in gl_PerVertex {
     vec4 gl_Position;
-  };
+  } gl_in[];
   layout(passthrough) in Inputs {
     vec2 texCoord;
-  };
+  } IN[];
   void main()
   {
     gl_Layer = gl_PrimitiveIDIn;
