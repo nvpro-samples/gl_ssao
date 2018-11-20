@@ -1,44 +1,52 @@
-/*-----------------------------------------------------------------------
-  Copyright (c) 2014-2015, NVIDIA. All rights reserved.
+/* Copyright (c) 2014-2018, NVIDIA CORPORATION. All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ *  * Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ *  * Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ *  * Neither the name of NVIDIA CORPORATION nor the names of its
+ *    contributors may be used to endorse or promote products derived
+ *    from this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS ``AS IS'' AND ANY
+ * EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
+ * PURPOSE ARE DISCLAIMED.  IN NO EVENT SHALL THE COPYRIGHT OWNER OR
+ * CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
+ * EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
+ * PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
+ * PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY
+ * OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+ * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
 
-  Redistribution and use in source and binary forms, with or without
-  modification, are permitted provided that the following conditions
-  are met:
-   * Redistributions of source code must retain the above copyright
-     notice, this list of conditions and the following disclaimer.
-   * Neither the name of its contributors may be used to endorse 
-     or promote products derived from this software without specific
-     prior written permission.
-
-  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS ``AS IS'' AND ANY
-  EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-  IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
-  PURPOSE ARE DISCLAIMED.  IN NO EVENT SHALL THE COPYRIGHT OWNER OR
-  CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
-  EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
-  PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
-  PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY
-  OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-  OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
------------------------------------------------------------------------*/
 /* Contact ckubisch@nvidia.com (Christoph Kubisch) for feedback */
 
 #define DEBUG_FILTER     1
 
-#include <GL/glew.h>
-#include <nv_helpers/anttweakbar.hpp>
-#include <nv_helpers_gl/WindowProfiler.hpp>
+#include <include_gl.h>
+
+#include <imgui/imgui_helper.h>
+#include <imgui/imgui_impl_gl.h>
+
 #include <nv_math/nv_math_glsltypes.h>
 
-#include <nv_helpers_gl/error.hpp>
-#include <nv_helpers_gl/programmanager.hpp>
 #include <nv_helpers/geometry.hpp>
 #include <nv_helpers/misc.hpp>
-#include <nv_helpers_gl/glresources.hpp>
 #include <nv_helpers/cameracontrol.hpp>
+#include <nv_helpers/tnulled.hpp>
 
-#include <noise/MersenneTwister.h>
+#include <nv_helpers_gl/appwindowprofiler_gl.hpp>
+#include <nv_helpers_gl/error_gl.hpp>
+#include <nv_helpers_gl/programmanager_gl.hpp>
+#include <nv_helpers_gl/base_gl.hpp>
+
+#include <noise/mersennetwister1.h>
 
 // optimizes blur, by storing depth along with ssao calculation
 // avoids accessing two different textures
@@ -68,7 +76,7 @@ namespace ssao
   int const SAMPLE_SIZE_HEIGHT(1080);
 #endif
   int const SAMPLE_MAJOR_VERSION(4);
-  int const SAMPLE_MINOR_VERSION(3);
+  int const SAMPLE_MINOR_VERSION(5);
 
   static const int  NUM_MRT = 8;
   static const int  HBAO_RANDOM_SIZE = AO_RANDOMTEX_SIZE;
@@ -78,15 +86,18 @@ namespace ssao
   static const int        grid = 32;
   static const float      globalscale = 16.0f;
 
-  class Sample : public nv_helpers_gl::WindowProfiler
+  class Sample : public nv_helpers_gl::AppWindowProfilerGL
   {
-    ProgramManager progManager;
-
     enum AlgorithmType {
       ALGORITHM_NONE,
       ALGORITHM_HBAO_CACHEAWARE,
       ALGORITHM_HBAO_CLASSIC,
       NUM_ALGORITHMS,
+    };
+
+    enum GuiEnums {
+      GUI_ALGORITHM,
+      GUI_MSAA,
     };
 
     struct {
@@ -112,7 +123,7 @@ namespace ssao
     } programs;
 
     struct {
-      ResourceGLuint
+      nv_helpers::TNulled<GLuint>
         scene,
         depthlinear,
         viewnormal,
@@ -122,7 +133,7 @@ namespace ssao
     } fbos;
 
     struct {
-      ResourceGLuint  
+      nv_helpers::TNulled<GLuint>
         scene_vbo,
         scene_ibo,
         scene_ubo,
@@ -130,7 +141,7 @@ namespace ssao
     } buffers;
 
     struct {
-      ResourceGLuint
+      nv_helpers::TNulled<GLuint>
         scene_color,
         scene_depthstencil,
         scene_depthlinear,
@@ -159,51 +170,24 @@ namespace ssao
 
 
     struct Tweak {
-      Tweak() 
-
-        : algorithm(ALGORITHM_HBAO_CACHEAWARE)
-        , samples(1)
-        , intensity(1.5f)
-        , radius(2.f)
-        , bias(0.1f)
-        , blur(1)
-        , blurSharpness(40.0f)
-        , ortho(false)
-      {}
-
-      int             samples;
-      AlgorithmType   algorithm;
-      float           intensity;
-      float           bias;
-      float           radius;
-      int             blur;
-      float           blurSharpness;
-      bool            ortho;
+      int             samples = 1;
+      AlgorithmType   algorithm = ALGORITHM_HBAO_CACHEAWARE;
+      float           intensity = 1.5f;
+      float           bias = 0.1f;
+      float           radius = 2.0f;
+      float           blurSharpness = 40.0f;
+      bool            blur = true;
+      bool            ortho = false;
     };
 
-    Tweak      tweak;
-    Tweak      tweakLast;
-    uint       sceneTriangleIndices;
-    uint       sceneObjects;
-
     struct Projection {
-      float nearplane;
-      float farplane;
-      float fov;
-      float orthoheight;
-      bool  ortho;
+      float nearplane = 0.1f;
+      float farplane = 100.0f;
+      float fov = 45.0f;
+      float orthoheight = 1.0f;
+      bool  ortho = false;
       mat4  matrix;
-
-      Projection()
-        : nearplane(0.1f)
-        , farplane(100.0f)
-        , fov((45.f))
-        , orthoheight(1.0f)
-        , ortho(false)
-      {
-
-      }
-
+      
       void update(int width, int height){
         float aspect = float(width) / float(height);
         if (ortho){
@@ -215,13 +199,25 @@ namespace ssao
       }
     };
 
-    Projection projection;
+    ImGuiH::Registry  m_ui;
+    double            m_uiTime = 0;
 
-    SceneData  sceneUbo;
-    HBAOData   hbaoUbo;
-    vec4f      hbaoRandom[HBAO_RANDOM_ELEMENTS * MAX_SAMPLES];
+    ProgramManager    m_progManager;
+    CameraControl     m_control;
+    Tweak             m_tweak;
+    Tweak             m_tweakLast;
+
+    uint              m_sceneTriangleIndices;
+    uint              m_sceneObjects;
+
+    Projection        m_projection;
+
+    SceneData         m_sceneUbo;
+    HBAOData          m_hbaoUbo;
+    vec4f             m_hbaoRandom[HBAO_RANDOM_ELEMENTS * MAX_SAMPLES];
 
     bool begin();
+    void processUI(double time);
     void think(double time);
     void resize(int width, int height);
 
@@ -237,23 +233,24 @@ namespace ssao
     bool initMisc();
     bool initFramebuffers(int width, int height, int samples);
 
-    CameraControl m_control;
-
     void end() {
-      TwTerminate();
+      ImGui::ShutdownGL();
     }
     // return true to prevent m_window updates
     bool mouse_pos    (int x, int y) {
-      return !!TwEventMousePosGLFW(x,y); 
+      return ImGuiH::mouse_pos(x, y);
     }
     bool mouse_button (int button, int action) {
-      return !!TwEventMouseButtonGLFW(button, action);
+      return ImGuiH::mouse_button(button, action);
     }
     bool mouse_wheel  (int wheel) {
-      return !!TwEventMouseWheelGLFW(wheel); 
+      return ImGuiH::mouse_wheel(wheel);
+    }
+    bool key_char(int button) {
+      return ImGuiH::key_char(button);
     }
     bool key_button   (int button, int action, int mods) {
-      return handleTwKeyPressed(button,action,mods);
+      return ImGuiH::key_button(button,action,mods);
     }
     
   };
@@ -261,81 +258,82 @@ namespace ssao
   bool Sample::initProgram()
   {
     bool validated(true);
-    progManager.addDirectory( std::string(PROJECT_NAME));
-    progManager.addDirectory( sysExePath() + std::string(PROJECT_RELDIRECTORY));
-    progManager.addDirectory( std::string(PROJECT_ABSDIRECTORY));
+    m_progManager.m_filetype = ShaderFileManager::FILETYPE_GLSL;
+    m_progManager.addDirectory( std::string("GLSL_" PROJECT_NAME));
+    m_progManager.addDirectory( sysExePath() + std::string(PROJECT_RELDIRECTORY));
+    m_progManager.addDirectory( std::string(PROJECT_ABSDIRECTORY));
 
-    progManager.registerInclude("common.h", "common.h");
+    m_progManager.registerInclude("common.h", "common.h");
 
-    progManager.m_prepend = ProgramManager::format("#define AO_LAYERED %d\n", USE_AO_LAYERED_SINGLEPASS);
+    m_progManager.m_prepend = ProgramManager::format("#define AO_LAYERED %d\n", USE_AO_LAYERED_SINGLEPASS);
 
-    programs.draw_scene = progManager.createProgram(
+    programs.draw_scene = m_progManager.createProgram(
       ProgramManager::Definition(GL_VERTEX_SHADER,          "scene.vert.glsl"),
       ProgramManager::Definition(GL_FRAGMENT_SHADER,        "scene.frag.glsl"));
 
-    programs.bilateralblur = progManager.createProgram(
+    programs.bilateralblur = m_progManager.createProgram(
       ProgramManager::Definition(GL_VERTEX_SHADER,          "fullscreenquad.vert.glsl"),
       ProgramManager::Definition(GL_FRAGMENT_SHADER,        "bilateralblur.frag.glsl"));
 
-    programs.depth_linearize = progManager.createProgram(
+    programs.depth_linearize = m_progManager.createProgram(
       ProgramManager::Definition(GL_VERTEX_SHADER,          "fullscreenquad.vert.glsl"),
       ProgramManager::Definition(GL_FRAGMENT_SHADER,        "#define DEPTHLINEARIZE_MSAA 0\n", "depthlinearize.frag.glsl"));
 
-    programs.depth_linearize_msaa = progManager.createProgram(
+    programs.depth_linearize_msaa = m_progManager.createProgram(
       ProgramManager::Definition(GL_VERTEX_SHADER,          "fullscreenquad.vert.glsl"),
       ProgramManager::Definition(GL_FRAGMENT_SHADER,        "#define DEPTHLINEARIZE_MSAA 1\n", "depthlinearize.frag.glsl"));
 
-    programs.viewnormal = progManager.createProgram(
+    programs.viewnormal = m_progManager.createProgram(
       ProgramManager::Definition(GL_VERTEX_SHADER,          "fullscreenquad.vert.glsl"),
       ProgramManager::Definition(GL_FRAGMENT_SHADER,        "viewnormal.frag.glsl"));
 
-    programs.displaytex = progManager.createProgram(
+    programs.displaytex = m_progManager.createProgram(
       ProgramManager::Definition(GL_VERTEX_SHADER,          "fullscreenquad.vert.glsl"),
       ProgramManager::Definition(GL_FRAGMENT_SHADER,        "displaytex.frag.glsl"));
 
-    programs.hbao_calc = progManager.createProgram(
+    programs.hbao_calc = m_progManager.createProgram(
       ProgramManager::Definition(GL_VERTEX_SHADER,          "fullscreenquad.vert.glsl"),
       ProgramManager::Definition(GL_FRAGMENT_SHADER,        "#define AO_DEINTERLEAVED 0\n#define AO_BLUR 0\n", "hbao.frag.glsl"));
 
-    programs.hbao_calc_blur = progManager.createProgram(
+    programs.hbao_calc_blur = m_progManager.createProgram(
       ProgramManager::Definition(GL_VERTEX_SHADER,          "fullscreenquad.vert.glsl"),
       ProgramManager::Definition(GL_FRAGMENT_SHADER,        "#define AO_DEINTERLEAVED 0\n#define AO_BLUR 1\n", "hbao.frag.glsl"));
 
-    programs.hbao_blur = progManager.createProgram(
+    programs.hbao_blur = m_progManager.createProgram(
       ProgramManager::Definition(GL_VERTEX_SHADER,          "fullscreenquad.vert.glsl"),
       ProgramManager::Definition(GL_FRAGMENT_SHADER,        "#define AO_BLUR_PRESENT 0\n","hbao_blur.frag.glsl"));
 
-    programs.hbao_blur2 = progManager.createProgram(
+    programs.hbao_blur2 = m_progManager.createProgram(
       ProgramManager::Definition(GL_VERTEX_SHADER,          "fullscreenquad.vert.glsl"),
       ProgramManager::Definition(GL_FRAGMENT_SHADER,        "#define AO_BLUR_PRESENT 1\n","hbao_blur.frag.glsl"));
 
-    programs.hbao2_calc = progManager.createProgram(
+    programs.hbao2_calc = m_progManager.createProgram(
       ProgramManager::Definition(GL_VERTEX_SHADER,          "fullscreenquad.vert.glsl"),
 #if USE_AO_LAYERED_SINGLEPASS == AO_LAYERED_GS
       ProgramManager::Definition(GL_GEOMETRY_SHADER,        "fullscreenquad.geo.glsl"),
 #endif
       ProgramManager::Definition(GL_FRAGMENT_SHADER,        "#define AO_DEINTERLEAVED 1\n#define AO_BLUR 0\n", "hbao.frag.glsl"));
 
-    programs.hbao2_calc_blur = progManager.createProgram(
+    programs.hbao2_calc_blur = m_progManager.createProgram(
       ProgramManager::Definition(GL_VERTEX_SHADER,          "fullscreenquad.vert.glsl"),
 #if USE_AO_LAYERED_SINGLEPASS == AO_LAYERED_GS
       ProgramManager::Definition(GL_GEOMETRY_SHADER,        "fullscreenquad.geo.glsl"),
 #endif
       ProgramManager::Definition(GL_FRAGMENT_SHADER,        "#define AO_DEINTERLEAVED 1\n#define AO_BLUR 1\n", "hbao.frag.glsl"));
 
-    programs.hbao2_deinterleave = progManager.createProgram(
+    programs.hbao2_deinterleave = m_progManager.createProgram(
       ProgramManager::Definition(GL_VERTEX_SHADER,          "fullscreenquad.vert.glsl"),
       ProgramManager::Definition(GL_FRAGMENT_SHADER,        "hbao_deinterleave.frag.glsl"));
 
-    programs.hbao2_reinterleave = progManager.createProgram(
+    programs.hbao2_reinterleave = m_progManager.createProgram(
       ProgramManager::Definition(GL_VERTEX_SHADER,          "fullscreenquad.vert.glsl"),
       ProgramManager::Definition(GL_FRAGMENT_SHADER,        "#define AO_BLUR 0\n","hbao_reinterleave.frag.glsl"));
 
-    programs.hbao2_reinterleave_blur = progManager.createProgram(
+    programs.hbao2_reinterleave_blur = m_progManager.createProgram(
       ProgramManager::Definition(GL_VERTEX_SHADER,          "fullscreenquad.vert.glsl"),
       ProgramManager::Definition(GL_FRAGMENT_SHADER,        "#define AO_BLUR 1\n","hbao_reinterleave.frag.glsl"));
 
-    validated = progManager.areProgramsValid();
+    validated = m_progManager.areProgramsValid();
 
     return validated;
   }
@@ -357,19 +355,19 @@ namespace ssao
 
       // Use random rotation angles in [0,2PI/NUM_DIRECTIONS)
       float Angle = 2.f * nv_pi * Rand1 / numDir;
-      hbaoRandom[i].x = cosf(Angle);
-      hbaoRandom[i].y = sinf(Angle);
-      hbaoRandom[i].z = Rand2;
-      hbaoRandom[i].w = 0;
+      m_hbaoRandom[i].x = cosf(Angle);
+      m_hbaoRandom[i].y = sinf(Angle);
+      m_hbaoRandom[i].z = Rand2;
+      m_hbaoRandom[i].w = 0;
 #define SCALE ((1<<15))
-      hbaoRandomShort[i*4+0] = (signed short)(SCALE*hbaoRandom[i].x);
-      hbaoRandomShort[i*4+1] = (signed short)(SCALE*hbaoRandom[i].y);
-      hbaoRandomShort[i*4+2] = (signed short)(SCALE*hbaoRandom[i].z);
-      hbaoRandomShort[i*4+3] = (signed short)(SCALE*hbaoRandom[i].w);
+      hbaoRandomShort[i*4+0] = (signed short)(SCALE*m_hbaoRandom[i].x);
+      hbaoRandomShort[i*4+1] = (signed short)(SCALE*m_hbaoRandom[i].y);
+      hbaoRandomShort[i*4+2] = (signed short)(SCALE*m_hbaoRandom[i].z);
+      hbaoRandomShort[i*4+3] = (signed short)(SCALE*m_hbaoRandom[i].w);
 #undef SCALE
     }
 
-    newTexture(textures.hbao_random);
+    newTexture(textures.hbao_random, GL_TEXTURE_2D_ARRAY);
     glBindTexture(GL_TEXTURE_2D_ARRAY,textures.hbao_random);
     glTexStorage3D (GL_TEXTURE_2D_ARRAY,1,GL_RGBA16_SNORM,HBAO_RANDOM_SIZE,HBAO_RANDOM_SIZE,MAX_SAMPLES);
     glTexSubImage3D(GL_TEXTURE_2D_ARRAY,0,0,0,0, HBAO_RANDOM_SIZE,HBAO_RANDOM_SIZE,MAX_SAMPLES,GL_RGBA,GL_SHORT,hbaoRandomShort);
@@ -379,7 +377,7 @@ namespace ssao
 
     for (int i = 0; i < MAX_SAMPLES; i++)
     {
-      newTexture(textures.hbao_randomview[i]);
+      newTexture(textures.hbao_randomview[i], GL_TEXTURE_2D);
       glTextureView(textures.hbao_randomview[i], GL_TEXTURE_2D, textures.hbao_random, GL_RGBA16_SNORM, 0, 1, i, 1);
       glBindTexture(GL_TEXTURE_2D, textures.hbao_randomview[i]);
       glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
@@ -388,7 +386,7 @@ namespace ssao
     }
 
     newBuffer(buffers.hbao_ubo);
-    glNamedBufferStorageEXT(buffers.hbao_ubo, sizeof(HBAOData), NULL, GL_DYNAMIC_STORAGE_BIT);
+    glNamedBufferStorage(buffers.hbao_ubo, sizeof(HBAOData), NULL, GL_DYNAMIC_STORAGE_BIT);
 
     return true;
   }
@@ -399,7 +397,7 @@ namespace ssao
       geometry::Mesh<Vertex>  scene;
       const int LEVELS = 4;
       
-      sceneObjects = 0;
+      m_sceneObjects = 0;
       for (int i = 0; i < grid * grid; i++){
 
         vec4 color(frand(),frand(),frand(),1.0f);
@@ -449,17 +447,17 @@ namespace ssao
           depth += size.z;
         }
 
-        sceneObjects++;
+        m_sceneObjects++;
       }
 
-      sceneTriangleIndices = scene.getTriangleIndicesCount();
+      m_sceneTriangleIndices = scene.getTriangleIndicesCount();
 
       newBuffer(buffers.scene_ibo);
-      glNamedBufferStorageEXT(buffers.scene_ibo, scene.getTriangleIndicesSize(), &scene.m_indicesTriangles[0], 0);
+      glNamedBufferStorage(buffers.scene_ibo, scene.getTriangleIndicesSize(), &scene.m_indicesTriangles[0], 0);
 
       newBuffer(buffers.scene_vbo);
       glBindBuffer(GL_ARRAY_BUFFER, buffers.scene_vbo);
-      glNamedBufferStorageEXT(buffers.scene_vbo, scene.getVerticesSize(), &scene.m_vertices[0], 0);
+      glNamedBufferStorage(buffers.scene_vbo, scene.getVerticesSize(), &scene.m_vertices[0], 0);
 
       glVertexAttribFormat(VERTEX_COLOR,  4, GL_FLOAT, GL_FALSE,  offsetof(Vertex,color));
       glVertexAttribBinding(VERTEX_COLOR, 0);
@@ -472,7 +470,7 @@ namespace ssao
 
     { // Scene UBO
       newBuffer(buffers.scene_ubo);
-      glNamedBufferStorageEXT(buffers.scene_ubo, sizeof(SceneData), NULL, GL_DYNAMIC_STORAGE_BIT);
+      glNamedBufferStorage(buffers.scene_ubo, sizeof(SceneData), NULL, GL_DYNAMIC_STORAGE_BIT);
     }
 
     return true;
@@ -482,24 +480,24 @@ namespace ssao
   {
 
     if (samples > 1){
-      newTexture(textures.scene_color);
+      newTexture(textures.scene_color, GL_TEXTURE_2D_MULTISAMPLE);
       glBindTexture (GL_TEXTURE_2D_MULTISAMPLE, textures.scene_color);
       glTexStorage2DMultisample(GL_TEXTURE_2D_MULTISAMPLE, samples, GL_RGBA8, width, height, GL_FALSE);
       glBindTexture (GL_TEXTURE_2D_MULTISAMPLE, 0);
 
-      newTexture(textures.scene_depthstencil);
+      newTexture(textures.scene_depthstencil, GL_TEXTURE_2D_MULTISAMPLE);
       glBindTexture (GL_TEXTURE_2D_MULTISAMPLE, textures.scene_depthstencil);
       glTexStorage2DMultisample(GL_TEXTURE_2D_MULTISAMPLE, samples, GL_DEPTH24_STENCIL8, width, height, GL_FALSE);
       glBindTexture (GL_TEXTURE_2D_MULTISAMPLE, 0);
     }
     else
     {
-      newTexture(textures.scene_color);
+      newTexture(textures.scene_color, GL_TEXTURE_2D);
       glBindTexture (GL_TEXTURE_2D, textures.scene_color);
       glTexStorage2D(GL_TEXTURE_2D, 1, GL_RGBA8, width, height);
       glBindTexture (GL_TEXTURE_2D, 0);
 
-      newTexture(textures.scene_depthstencil);
+      newTexture(textures.scene_depthstencil, GL_TEXTURE_2D);
       glBindTexture (GL_TEXTURE_2D, textures.scene_depthstencil);
       glTexStorage2D(GL_TEXTURE_2D, 1, GL_DEPTH24_STENCIL8, width, height);
       glBindTexture (GL_TEXTURE_2D, 0);
@@ -512,7 +510,7 @@ namespace ssao
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
 
-    newTexture(textures.scene_depthlinear);
+    newTexture(textures.scene_depthlinear, GL_TEXTURE_2D);
     glBindTexture (GL_TEXTURE_2D, textures.scene_depthlinear);
     glTexStorage2D(GL_TEXTURE_2D, 1, GL_R32F, width, height);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
@@ -526,7 +524,7 @@ namespace ssao
     glFramebufferTexture(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,  textures.scene_depthlinear, 0);
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
-    newTexture(textures.scene_viewnormal);
+    newTexture(textures.scene_viewnormal, GL_TEXTURE_2D);
     glBindTexture (GL_TEXTURE_2D, textures.scene_viewnormal);
     glTexStorage2D(GL_TEXTURE_2D, 1, GL_RGBA8, width, height);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
@@ -550,7 +548,7 @@ namespace ssao
     GLint swizzle[4] = {GL_RED,GL_RED,GL_RED,GL_RED};
 #endif
     
-    newTexture(textures.hbao_result);
+    newTexture(textures.hbao_result, GL_TEXTURE_2D);
     glBindTexture (GL_TEXTURE_2D, textures.hbao_result);
     glTexStorage2D(GL_TEXTURE_2D, 1, formatAO, width, height);
     glTexParameteriv(GL_TEXTURE_2D, GL_TEXTURE_SWIZZLE_RGBA, swizzle);
@@ -558,7 +556,7 @@ namespace ssao
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     glBindTexture (GL_TEXTURE_2D, 0);
 
-    newTexture(textures.hbao_blur);
+    newTexture(textures.hbao_blur, GL_TEXTURE_2D);
     glBindTexture (GL_TEXTURE_2D, textures.hbao_blur);
     glTexStorage2D(GL_TEXTURE_2D, 1, formatAO, width, height);
     glTexParameteriv(GL_TEXTURE_2D, GL_TEXTURE_SWIZZLE_RGBA, swizzle);
@@ -577,7 +575,7 @@ namespace ssao
     int quarterWidth  = ((width+3)/4);
     int quarterHeight = ((height+3)/4);
 
-    newTexture(textures.hbao2_deptharray);
+    newTexture(textures.hbao2_deptharray, GL_TEXTURE_2D_ARRAY);
     glBindTexture (GL_TEXTURE_2D_ARRAY, textures.hbao2_deptharray);
     glTexStorage3D(GL_TEXTURE_2D_ARRAY, 1, GL_R32F, quarterWidth, quarterHeight, HBAO_RANDOM_ELEMENTS);
     glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
@@ -587,7 +585,7 @@ namespace ssao
     glBindTexture (GL_TEXTURE_2D_ARRAY, 0);
 
     for (int i = 0; i < HBAO_RANDOM_ELEMENTS; i++){
-      newTexture(textures.hbao2_depthview[i]);
+      newTexture(textures.hbao2_depthview[i], GL_TEXTURE_2D);
       glTextureView(textures.hbao2_depthview[i], GL_TEXTURE_2D, textures.hbao2_deptharray, GL_R32F, 0, 1, i, 1);
       glBindTexture(GL_TEXTURE_2D, textures.hbao2_depthview[i]);
       glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
@@ -598,7 +596,7 @@ namespace ssao
     }
 
 
-    newTexture(textures.hbao2_resultarray);
+    newTexture(textures.hbao2_resultarray, GL_TEXTURE_2D_ARRAY);
     glBindTexture (GL_TEXTURE_2D_ARRAY, textures.hbao2_resultarray);
     glTexStorage3D(GL_TEXTURE_2D_ARRAY, 1, formatAO, quarterWidth, quarterHeight, HBAO_RANDOM_ELEMENTS);
     glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
@@ -637,8 +635,8 @@ namespace ssao
 
   bool Sample::begin()
   {
-    TwInit(TW_OPENGL_CORE,NULL);
-    TwWindowSize(m_window.m_viewsize[0],m_window.m_viewsize[1]);
+    ImGuiH::Init(m_window.m_viewsize[0], m_window.m_viewsize[1], this);
+    ImGui::InitGL();
 
     glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
     glEnable(GL_CULL_FACE);
@@ -653,47 +651,55 @@ namespace ssao
     validated = validated && initProgram();
     validated = validated && initMisc();
     validated = validated && initScene();
-    validated = validated && initFramebuffers(m_window.m_viewsize[0],m_window.m_viewsize[1],tweak.samples);
+    validated = validated && initFramebuffers(m_window.m_viewsize[0],m_window.m_viewsize[1],m_tweak.samples);
 
-    TwBar *bar = TwNewBar("mainbar");
-    TwDefine(" GLOBAL contained=true help='OpenGL samples.\nCopyright NVIDIA Corporation 2013-2014' ");
-    TwDefine(" mainbar position='0 0' size='300 150' color='0 0 0' alpha=128 valueswidth=120 ");
-    TwDefine((std::string(" mainbar label='") + PROJECT_NAME + "'").c_str());
-
-    TwEnumVal enumVals[] = {
-      {ALGORITHM_NONE,"none"},
-      {ALGORITHM_HBAO_CACHEAWARE,"hbao cache-aware"},
-      {ALGORITHM_HBAO_CLASSIC,"hbao classic"},
-    };
-    TwType algorithmType = TwDefineEnum("algorithm", enumVals, sizeof(enumVals)/sizeof(enumVals[0]));
-
-    TwEnumVal enumSampleVals[] = {
-      {1,"none"},
-      {2,"2x"},
-      {4,"4x"},
-      {8,"8x"},
-    };
-    TwType samplesType = TwDefineEnum("samples", enumSampleVals, sizeof(enumSampleVals)/sizeof(enumSampleVals[0]));
-
-    TwAddVarRW(bar, "samples",  samplesType, &tweak.samples, " label='msaa' ");
-    TwAddVarRW(bar, "algorithm",  algorithmType, &tweak.algorithm, " label='ssao algorithm' ");
-    TwAddVarRW(bar, "ortho", TW_TYPE_BOOLCPP, &tweak.ortho, " label='orthographic' ");
-    TwAddVarRW(bar, "radius",  TW_TYPE_FLOAT, &tweak.radius, " label='radius' step=0.1 min=0 precision=2 ");
-    TwAddVarRW(bar, "intensity",  TW_TYPE_FLOAT, &tweak.intensity, " label='intensity' min=0 step=0.1 ");
-    TwAddVarRW(bar, "bias",  TW_TYPE_FLOAT, &tweak.bias, " label='bias' min=0 step=0.1 max=0.1");
-    TwAddVarRW(bar, "bluractive",  TW_TYPE_BOOL32, &tweak.blur, " label='blur active' ");
-    TwAddVarRW(bar, "blursharpness",  TW_TYPE_FLOAT, &tweak.blurSharpness, " label='blur sharpness' min=0 ");
-
+    m_ui.enumAdd(GUI_ALGORITHM, ALGORITHM_NONE, "none");
+    m_ui.enumAdd(GUI_ALGORITHM, ALGORITHM_HBAO_CACHEAWARE, "hbao cache-aware");
+    m_ui.enumAdd(GUI_ALGORITHM, ALGORITHM_HBAO_CLASSIC, "hbao classic");
+    
+    m_ui.enumAdd(GUI_MSAA, 1, "none");
+    m_ui.enumAdd(GUI_MSAA, 2, "2x");
+    m_ui.enumAdd(GUI_MSAA, 4, "4x");
+    m_ui.enumAdd(GUI_MSAA, 8, "8x");
+    
     m_control.m_sceneOrbit = vec3(0.0f);
     m_control.m_sceneDimension = float(globalscale);
     m_control.m_sceneOrthoZoom = m_control.m_sceneDimension;
     m_control.m_viewMatrix = nv_math::look_at(m_control.m_sceneOrbit - (vec3(0.4f,-0.35f,-0.6f)*m_control.m_sceneDimension*0.9f), m_control.m_sceneOrbit, vec3(0,1,0));
     
-    projection.nearplane = m_control.m_sceneDimension * 0.01f;
-    projection.farplane  = m_control.m_sceneDimension * 10.0f;
+    m_projection.nearplane = m_control.m_sceneDimension * 0.01f;
+    m_projection.farplane  = m_control.m_sceneDimension * 10.0f;
 
 
     return validated;
+  }
+
+  void Sample::processUI(double time)
+  {
+    int width = m_window.m_viewsize[0];
+    int height = m_window.m_viewsize[1];
+
+    // Update imgui configuration
+    auto &imgui_io = ImGui::GetIO();
+    imgui_io.DeltaTime = static_cast<float>(time - m_uiTime);
+    imgui_io.DisplaySize = ImVec2(width, height);
+
+    m_uiTime = time;
+
+    ImGui::NewFrame();
+    ImGui::SetNextWindowSize(ImVec2(350, 0), ImGuiCond_FirstUseEver);
+    if (ImGui::Begin("NVIDIA " PROJECT_NAME, nullptr)) {
+      m_ui.enumCombobox(GUI_MSAA, "msaa", &m_tweak.samples);
+      m_ui.enumCombobox(GUI_ALGORITHM, "ssao algorithm", &m_tweak.algorithm);
+
+      ImGui::Checkbox("orthographic", &m_tweak.ortho);
+      ImGui::SliderFloat("radius", &m_tweak.radius, 0.0f, 4.0f);
+      ImGui::SliderFloat("intensity", &m_tweak.intensity, 0.0f, 4.0f);
+      ImGui::SliderFloat("bias", &m_tweak.bias, 0.0f, 0.9999f);
+      ImGui::Checkbox("blur active", &m_tweak.blur);
+      ImGui::SliderFloat("blur sharpness", &m_tweak.blurSharpness, 0.0f, 128.0f);
+    }
+    ImGui::End();
   }
 
   void Sample::prepareHbaoData(const Projection& projection, int width, int height)
@@ -716,8 +722,8 @@ namespace ssao
     };
 
     int useOrtho = projection.ortho ? 1 : 0;
-    hbaoUbo.projOrtho = useOrtho;
-    hbaoUbo.projInfo  = useOrtho ? projInfoOrtho : projInfoPerspective;
+    m_hbaoUbo.projOrtho = useOrtho;
+    m_hbaoUbo.projInfo  = useOrtho ? projInfoOrtho : projInfoPerspective;
 
     float projScale;
     if (useOrtho){
@@ -729,27 +735,27 @@ namespace ssao
 
     // radius
     float meters2viewspace = 1.0f;
-    float R = tweak.radius * meters2viewspace;
-    hbaoUbo.R2 = R * R;
-    hbaoUbo.NegInvR2 = -1.0f / hbaoUbo.R2;
-    hbaoUbo.RadiusToScreen = R * 0.5f * projScale;
+    float R = m_tweak.radius * meters2viewspace;
+    m_hbaoUbo.R2 = R * R;
+    m_hbaoUbo.NegInvR2 = -1.0f / m_hbaoUbo.R2;
+    m_hbaoUbo.RadiusToScreen = R * 0.5f * projScale;
 
     // ao
-    hbaoUbo.PowExponent = std::max(tweak.intensity,0.0f);
-    hbaoUbo.NDotVBias = std::min(std::max(0.0f, tweak.bias),1.0f);
-    hbaoUbo.AOMultiplier = 1.0f / (1.0f - hbaoUbo.NDotVBias);
+    m_hbaoUbo.PowExponent = std::max(m_tweak.intensity,0.0f);
+    m_hbaoUbo.NDotVBias = std::min(std::max(0.0f, m_tweak.bias),1.0f);
+    m_hbaoUbo.AOMultiplier = 1.0f / (1.0f - m_hbaoUbo.NDotVBias);
 
     // resolution
     int quarterWidth  = ((width+3)/4);
     int quarterHeight = ((height+3)/4);
 
-    hbaoUbo.InvQuarterResolution = vec2(1.0f/float(quarterWidth),1.0f/float(quarterHeight));
-    hbaoUbo.InvFullResolution = vec2(1.0f/float(width),1.0f/float(height));
+    m_hbaoUbo.InvQuarterResolution = vec2(1.0f/float(quarterWidth),1.0f/float(quarterHeight));
+    m_hbaoUbo.InvFullResolution = vec2(1.0f/float(width),1.0f/float(height));
 
 #if USE_AO_LAYERED_SINGLEPASS
     for (int i = 0; i < HBAO_RANDOM_ELEMENTS; i++){
-      hbaoUbo.float2Offsets[i] = vec2(float(i % 4) + 0.5f, float(i / 4) + 0.5f);
-      hbaoUbo.jitters[i] = hbaoRandom[i];
+      m_hbaoUbo.float2Offsets[i] = vec2(float(i % 4) + 0.5f, float(i / 4) + 0.5f);
+      m_hbaoUbo.jitters[i] = m_hbaoRandom[i];
     }
 #endif
   }
@@ -759,22 +765,22 @@ namespace ssao
     NV_PROFILE_SECTION("linearize");
     glBindFramebuffer(GL_FRAMEBUFFER, fbos.depthlinear);
 
-    if (tweak.samples > 1){
-      glUseProgram(progManager.get(programs.depth_linearize_msaa));
+    if (m_tweak.samples > 1){
+      glUseProgram(m_progManager.get(programs.depth_linearize_msaa));
       glUniform4f(0, projection.nearplane * projection.farplane, projection.nearplane - projection.farplane, projection.farplane, projection.ortho ? 0.0f : 1.0f);
       glUniform1i(1,sampleIdx);
 
-      glBindMultiTextureEXT(GL_TEXTURE0, GL_TEXTURE_2D_MULTISAMPLE, textures.scene_depthstencil);
+      nv_helpers_gl::bindMultiTexture(GL_TEXTURE0, GL_TEXTURE_2D_MULTISAMPLE, textures.scene_depthstencil);
       glDrawArrays(GL_TRIANGLES,0,3);
-      glBindMultiTextureEXT(GL_TEXTURE0, GL_TEXTURE_2D_MULTISAMPLE, 0);
+      nv_helpers_gl::bindMultiTexture(GL_TEXTURE0, GL_TEXTURE_2D_MULTISAMPLE, 0);
     }
     else{
-      glUseProgram(progManager.get(programs.depth_linearize));
+      glUseProgram(m_progManager.get(programs.depth_linearize));
       glUniform4f(0, projection.nearplane * projection.farplane, projection.nearplane - projection.farplane, projection.farplane, projection.ortho ? 0.0f : 1.0f);
 
-      glBindMultiTextureEXT(GL_TEXTURE0, GL_TEXTURE_2D, textures.scene_depthstencil);
+      nv_helpers_gl::bindMultiTexture(GL_TEXTURE0, GL_TEXTURE_2D, textures.scene_depthstencil);
       glDrawArrays(GL_TRIANGLES,0,3);
-      glBindMultiTextureEXT(GL_TEXTURE0, GL_TEXTURE_2D, 0);
+      nv_helpers_gl::bindMultiTexture(GL_TEXTURE0, GL_TEXTURE_2D, 0);
     }
   }
 
@@ -784,14 +790,14 @@ namespace ssao
 
     float meters2viewspace = 1.0f;
 
-    glUseProgram(progManager.get(USE_AO_SPECIALBLUR ? programs.hbao_blur : programs.bilateralblur));
-    glBindMultiTextureEXT(GL_TEXTURE1, GL_TEXTURE_2D, textures.scene_depthlinear);
+    glUseProgram(m_progManager.get(USE_AO_SPECIALBLUR ? programs.hbao_blur : programs.bilateralblur));
+    nv_helpers_gl::bindMultiTexture(GL_TEXTURE1, GL_TEXTURE_2D, textures.scene_depthlinear);
 
-    glUniform1f(0,tweak.blurSharpness/meters2viewspace);
+    glUniform1f(0,m_tweak.blurSharpness/meters2viewspace);
 
     glDrawBuffer(GL_COLOR_ATTACHMENT1);
 
-    glBindMultiTextureEXT(GL_TEXTURE0, GL_TEXTURE_2D, textures.hbao_result);
+    nv_helpers_gl::bindMultiTexture(GL_TEXTURE0, GL_TEXTURE_2D, textures.hbao_result);
     glUniform2f(1,1.0f/float(width),0);
     glDrawArrays(GL_TRIANGLES,0,3);
 
@@ -800,17 +806,17 @@ namespace ssao
     glDisable(GL_DEPTH_TEST);
     glEnable(GL_BLEND);
     glBlendFunc(GL_ZERO,GL_SRC_COLOR);
-    if (tweak.samples > 1){
+    if (m_tweak.samples > 1){
       glEnable(GL_SAMPLE_MASK);
       glSampleMaski(0, 1<<sampleIdx);
     }
 
 #if USE_AO_SPECIALBLUR
-    glUseProgram(progManager.get(programs.hbao_blur2));
-    glUniform1f(0,tweak.blurSharpness/meters2viewspace);
+    glUseProgram(m_progManager.get(programs.hbao_blur2));
+    glUniform1f(0,m_tweak.blurSharpness/meters2viewspace);
 #endif
 
-    glBindMultiTextureEXT(GL_TEXTURE0, GL_TEXTURE_2D, textures.hbao_blur);
+    nv_helpers_gl::bindMultiTexture(GL_TEXTURE0, GL_TEXTURE_2D, textures.hbao_blur);
     glUniform2f(1,0,1.0f/float(height));
     glDrawArrays(GL_TRIANGLES,0,3);
   }
@@ -825,7 +831,7 @@ namespace ssao
     {
       NV_PROFILE_SECTION("ssaocalc");
 
-      if (tweak.blur){
+      if (m_tweak.blur){
         glBindFramebuffer(GL_FRAMEBUFFER, fbos.hbao_calc);
         glDrawBuffer(GL_COLOR_ATTACHMENT0);
       }
@@ -834,23 +840,23 @@ namespace ssao
         glDisable(GL_DEPTH_TEST);
         glEnable(GL_BLEND);
         glBlendFunc(GL_ZERO,GL_SRC_COLOR);
-        if (tweak.samples > 1){
+        if (m_tweak.samples > 1){
           glEnable(GL_SAMPLE_MASK);
           glSampleMaski(0, 1<<sampleIdx);
         }
       }
 
-      glUseProgram(progManager.get( USE_AO_SPECIALBLUR && tweak.blur ? programs.hbao_calc_blur : programs.hbao_calc ));
+      glUseProgram(m_progManager.get( USE_AO_SPECIALBLUR && m_tweak.blur ? programs.hbao_calc_blur : programs.hbao_calc ));
 
       glBindBufferBase(GL_UNIFORM_BUFFER,0,buffers.hbao_ubo);
-      glNamedBufferSubDataEXT(buffers.hbao_ubo,0,sizeof(HBAOData),&hbaoUbo);
+      glNamedBufferSubData(buffers.hbao_ubo,0,sizeof(HBAOData),&m_hbaoUbo);
 
-      glBindMultiTextureEXT(GL_TEXTURE0, GL_TEXTURE_2D, textures.scene_depthlinear);
-      glBindMultiTextureEXT(GL_TEXTURE1, GL_TEXTURE_2D, textures.hbao_randomview[sampleIdx]);
+      nv_helpers_gl::bindMultiTexture(GL_TEXTURE0, GL_TEXTURE_2D, textures.scene_depthlinear);
+      nv_helpers_gl::bindMultiTexture(GL_TEXTURE1, GL_TEXTURE_2D, textures.hbao_randomview[sampleIdx]);
       glDrawArrays(GL_TRIANGLES,0,3);
     }
 
-    if (tweak.blur){
+    if (m_tweak.blur){
       drawHbaoBlur(projection,width,height,sampleIdx);
     }
 
@@ -859,8 +865,8 @@ namespace ssao
     glDisable(GL_SAMPLE_MASK);
     glSampleMaski(0, ~0);
 
-    glBindMultiTextureEXT(GL_TEXTURE0, GL_TEXTURE_2D, 0);
-    glBindMultiTextureEXT(GL_TEXTURE1, GL_TEXTURE_2D, 0);
+    nv_helpers_gl::bindMultiTexture(GL_TEXTURE0, GL_TEXTURE_2D, 0);
+    nv_helpers_gl::bindMultiTexture(GL_TEXTURE1, GL_TEXTURE_2D, 0);
 
     glUseProgram(0);
   }
@@ -878,15 +884,15 @@ namespace ssao
       NV_PROFILE_SECTION("viewnormal");
       glBindFramebuffer(GL_FRAMEBUFFER, fbos.viewnormal);
 
-      glUseProgram(progManager.get(programs.viewnormal));
+      glUseProgram(m_progManager.get(programs.viewnormal));
 
-      glUniform4fv(0, 1, hbaoUbo.projInfo.get_value());
-      glUniform1i (1, hbaoUbo.projOrtho);
-      glUniform2fv(2, 1, hbaoUbo.InvFullResolution.get_value());
+      glUniform4fv(0, 1, m_hbaoUbo.projInfo.get_value());
+      glUniform1i (1, m_hbaoUbo.projOrtho);
+      glUniform2fv(2, 1, m_hbaoUbo.InvFullResolution.get_value());
 
-      glBindMultiTextureEXT(GL_TEXTURE0, GL_TEXTURE_2D, textures.scene_depthlinear);
+      nv_helpers_gl::bindMultiTexture(GL_TEXTURE0, GL_TEXTURE_2D, textures.scene_depthlinear);
       glDrawArrays(GL_TRIANGLES,0,3);
-      glBindMultiTextureEXT(GL_TEXTURE0, GL_TEXTURE_2D, 0);
+      nv_helpers_gl::bindMultiTexture(GL_TEXTURE0, GL_TEXTURE_2D, 0);
     }
 
     {
@@ -894,11 +900,11 @@ namespace ssao
       glBindFramebuffer(GL_FRAMEBUFFER, fbos.hbao2_deinterleave);
       glViewport(0,0,quarterWidth,quarterHeight);
 
-      glUseProgram(progManager.get(programs.hbao2_deinterleave));
-      glBindMultiTextureEXT(GL_TEXTURE0, GL_TEXTURE_2D, textures.scene_depthlinear);
+      glUseProgram(m_progManager.get(programs.hbao2_deinterleave));
+      nv_helpers_gl::bindMultiTexture(GL_TEXTURE0, GL_TEXTURE_2D, textures.scene_depthlinear);
 
       for (int i = 0; i < HBAO_RANDOM_ELEMENTS; i+= NUM_MRT){
-        glUniform4f(0, float(i % 4) + 0.5f, float(i / 4) + 0.5f, hbaoUbo.InvFullResolution.x, hbaoUbo.InvFullResolution.y);
+        glUniform4f(0, float(i % 4) + 0.5f, float(i / 4) + 0.5f, m_hbaoUbo.InvFullResolution.x, m_hbaoUbo.InvFullResolution.y);
 
         for (int layer = 0; layer < NUM_MRT; layer++){
           glFramebufferTexture(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0 + layer, textures.hbao2_depthview[i+layer], 0);
@@ -913,18 +919,18 @@ namespace ssao
       glBindFramebuffer(GL_FRAMEBUFFER, fbos.hbao2_calc);
       glViewport(0,0,quarterWidth,quarterHeight);
 
-      glUseProgram(progManager.get(USE_AO_SPECIALBLUR && tweak.blur ? programs.hbao2_calc_blur : programs.hbao2_calc));
-      glBindMultiTextureEXT(GL_TEXTURE1, GL_TEXTURE_2D, textures.scene_viewnormal);
+      glUseProgram(m_progManager.get(USE_AO_SPECIALBLUR && m_tweak.blur ? programs.hbao2_calc_blur : programs.hbao2_calc));
+      nv_helpers_gl::bindMultiTexture(GL_TEXTURE1, GL_TEXTURE_2D, textures.scene_viewnormal);
 
       glBindBufferBase(GL_UNIFORM_BUFFER,0,buffers.hbao_ubo);
-      glNamedBufferSubDataEXT(buffers.hbao_ubo,0,sizeof(HBAOData),&hbaoUbo);
+      glNamedBufferSubData(buffers.hbao_ubo,0,sizeof(HBAOData),&m_hbaoUbo);
 
 #if USE_AO_LAYERED_SINGLEPASS
       // instead of drawing to each layer individually
       // we draw all layers at once, and use image writes to update the array texture
       // this buys additional performance :)
 
-      glBindMultiTextureEXT(GL_TEXTURE0, GL_TEXTURE_2D_ARRAY, textures.hbao2_deptharray);
+      nv_helpers_gl::bindMultiTexture(GL_TEXTURE0, GL_TEXTURE_2D_ARRAY, textures.hbao2_deptharray);
 #if USE_AO_LAYERED_SINGLEPASS == AO_LAYERED_IMAGE
       glBindImageTexture( 0, textures.hbao2_resultarray, 0, GL_TRUE, 0, GL_WRITE_ONLY, USE_AO_SPECIALBLUR ? GL_RG16F : GL_R8);
 #endif
@@ -935,9 +941,9 @@ namespace ssao
 #else
       for (int i = 0; i < HBAO_RANDOM_ELEMENTS; i++){
         glUniform2f(0, float(i % 4) + 0.5f, float(i / 4) + 0.5f);
-        glUniform4fv(1, 1, hbaoRandom[i].get_value());
+        glUniform4fv(1, 1, m_hbaoRandom[i].get_value());
 
-        glBindMultiTextureEXT(GL_TEXTURE0, GL_TEXTURE_2D, textures.hbao2_depthview[i]);
+        nv_helpers_gl::bindMultiTexture(GL_TEXTURE0, GL_TEXTURE_2D, textures.hbao2_depthview[i]);
         glFramebufferTextureLayer(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, textures.hbao2_resultarray, 0, i);
 
         glDrawArrays(GL_TRIANGLES,0,3);
@@ -948,7 +954,7 @@ namespace ssao
     {
       NV_PROFILE_SECTION("reinterleave");
 
-      if (tweak.blur){
+      if (m_tweak.blur){
         glBindFramebuffer(GL_FRAMEBUFFER, fbos.hbao_calc);
         glDrawBuffer(GL_COLOR_ATTACHMENT0);
       }
@@ -957,21 +963,21 @@ namespace ssao
         glDisable(GL_DEPTH_TEST);
         glEnable(GL_BLEND);
         glBlendFunc(GL_ZERO,GL_SRC_COLOR);
-        if (tweak.samples > 1){
+        if (m_tweak.samples > 1){
           glEnable(GL_SAMPLE_MASK);
           glSampleMaski(0, 1<<sampleIdx);
         }
       }
       glViewport(0,0,width,height);
 
-      glUseProgram(progManager.get(USE_AO_SPECIALBLUR && tweak.blur ? programs.hbao2_reinterleave_blur : programs.hbao2_reinterleave));
+      glUseProgram(m_progManager.get(USE_AO_SPECIALBLUR && m_tweak.blur ? programs.hbao2_reinterleave_blur : programs.hbao2_reinterleave));
 
-      glBindMultiTextureEXT(GL_TEXTURE0, GL_TEXTURE_2D_ARRAY, textures.hbao2_resultarray);
+      nv_helpers_gl::bindMultiTexture(GL_TEXTURE0, GL_TEXTURE_2D_ARRAY, textures.hbao2_resultarray);
       glDrawArrays(GL_TRIANGLES,0,3);
-      glBindMultiTextureEXT(GL_TEXTURE0, GL_TEXTURE_2D_ARRAY, 0);
+      nv_helpers_gl::bindMultiTexture(GL_TEXTURE0, GL_TEXTURE_2D_ARRAY, 0);
     }
 
-    if (tweak.blur){
+    if (m_tweak.blur){
       drawHbaoBlur(projection,width,height,sampleIdx);
     }
 
@@ -980,8 +986,8 @@ namespace ssao
     glDisable(GL_SAMPLE_MASK);
     glSampleMaski(0,~0);
 
-    glBindMultiTextureEXT(GL_TEXTURE0, GL_TEXTURE_2D, 0);
-    glBindMultiTextureEXT(GL_TEXTURE1, GL_TEXTURE_2D, 0);
+    nv_helpers_gl::bindMultiTexture(GL_TEXTURE0, GL_TEXTURE_2D, 0);
+    nv_helpers_gl::bindMultiTexture(GL_TEXTURE1, GL_TEXTURE_2D, 0);
 
     glUseProgram(0);
 
@@ -991,30 +997,32 @@ namespace ssao
 
   void Sample::think(double time)
   {
-    m_control.m_sceneOrtho = tweak.ortho;
+    m_control.m_sceneOrtho = m_tweak.ortho;
     m_control.processActions(m_window.m_viewsize,
       nv_math::vec2f(m_window.m_mouseCurrent[0],m_window.m_mouseCurrent[1]),
       m_window.m_mouseButtonFlags, m_window.m_wheel);
 
     if (m_window.onPress(KEY_R)){
-      progManager.reloadPrograms();
+      m_progManager.reloadPrograms();
     }
-    if (!progManager.areProgramsValid()){
+    if (!m_progManager.areProgramsValid()){
       waitEvents();
       return;
     }
 
+    processUI(time);
+
     int width   = m_window.m_viewsize[0];
     int height  = m_window.m_viewsize[1];
 
-    projection.ortho       = m_control.m_sceneOrtho;
-    projection.orthoheight = m_control.m_sceneOrthoZoom;
-    projection.update(width,height);
+    m_projection.ortho       = m_control.m_sceneOrtho;
+    m_projection.orthoheight = m_control.m_sceneOrthoZoom;
+    m_projection.update(width,height);
 
-    if (tweakLast.samples != tweak.samples){
-      initFramebuffers(width,height,tweak.samples);
+    if (m_tweakLast.samples != m_tweak.samples){
+      initFramebuffers(width,height,m_tweak.samples);
     }
-    tweakLast = tweak;
+    m_tweakLast = m_tweak;
 
     {
       NV_PROFILE_SECTION("Scene");
@@ -1029,17 +1037,17 @@ namespace ssao
       glClear(GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
       glEnable(GL_DEPTH_TEST);
 
-      sceneUbo.viewport = uvec2(width,height);
+      m_sceneUbo.viewport = uvec2(width,height);
      
       nv_math::mat4 view = m_control.m_viewMatrix;
 
-      sceneUbo.viewProjMatrix = projection.matrix * view;
-      sceneUbo.viewMatrix = view;
-      sceneUbo.viewMatrixIT = nv_math::transpose(nv_math::invert(view));
+      m_sceneUbo.viewProjMatrix = m_projection.matrix * view;
+      m_sceneUbo.viewMatrix = view;
+      m_sceneUbo.viewMatrixIT = nv_math::transpose(nv_math::invert(view));
 
-      glUseProgram(progManager.get(programs.draw_scene));
+      glUseProgram(m_progManager.get(programs.draw_scene));
       glBindBufferBase(GL_UNIFORM_BUFFER, UBO_SCENE, buffers.scene_ubo);
-      glBufferSubData(GL_UNIFORM_BUFFER,0,sizeof(SceneData),&sceneUbo);
+      glBufferSubData(GL_UNIFORM_BUFFER,0,sizeof(SceneData),&m_sceneUbo);
 
       glBindVertexBuffer(0,buffers.scene_vbo,0,sizeof(Vertex));
       glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, buffers.scene_ibo);
@@ -1048,7 +1056,7 @@ namespace ssao
       glEnableVertexAttribArray(VERTEX_NORMAL);
       glEnableVertexAttribArray(VERTEX_COLOR);
 
-      glDrawElements(GL_TRIANGLES, sceneTriangleIndices, GL_UNSIGNED_INT, NV_BUFFER_OFFSET(0));
+      glDrawElements(GL_TRIANGLES, m_sceneTriangleIndices, GL_UNSIGNED_INT, NV_BUFFER_OFFSET(0));
 
       glDisableVertexAttribArray(VERTEX_POS);
       glDisableVertexAttribArray(VERTEX_NORMAL);
@@ -1062,14 +1070,14 @@ namespace ssao
     {
       NV_PROFILE_SECTION("ssao");
 
-      for (int sample = 0; sample < tweak.samples; sample++)
+      for (int sample = 0; sample < m_tweak.samples; sample++)
       {
-        switch(tweak.algorithm){
+        switch(m_tweak.algorithm){
         case ALGORITHM_HBAO_CLASSIC:
-          drawHbaoClassic(projection, width, height, sample);
+          drawHbaoClassic(m_projection, width, height, sample);
           break;
         case ALGORITHM_HBAO_CACHEAWARE:
-          drawHbaoCacheAware(projection, width, height, sample);
+          drawHbaoCacheAware(m_projection, width, height, sample);
           break;
         }
       }
@@ -1086,15 +1094,17 @@ namespace ssao
     }
     
     {
-      NV_PROFILE_SECTION("TwDraw");
-      TwDraw();
+      NV_PROFILE_SECTION("GUI");
+      ImGui::Render();
+      ImGui::RenderDrawDataGL(ImGui::GetDrawData());
     }
+
+    ImGui::EndFrame();
   }
 
   void Sample::resize(int width, int height)
   {
-    TwWindowSize(width,height);
-    initFramebuffers(width,height,tweak.samples);
+    initFramebuffers(width,height,m_tweak.samples);
   }
 }
 
@@ -1102,6 +1112,7 @@ using namespace ssao;
 
 int sample_main(int argc, const char** argv)
 {
+  SETLOGFILENAME();
   Sample sample;
   return sample.run(
     PROJECT_NAME,
