@@ -261,7 +261,7 @@ namespace ssao
     m_progManager.m_filetype = ShaderFileManager::FILETYPE_GLSL;
     m_progManager.addDirectory( std::string("GLSL_" PROJECT_NAME));
     m_progManager.addDirectory( sysExePath() + std::string(PROJECT_RELDIRECTORY));
-    m_progManager.addDirectory( std::string(PROJECT_ABSDIRECTORY));
+    //m_progManager.addDirectory( std::string(PROJECT_ABSDIRECTORY));
 
     m_progManager.registerInclude("common.h", "common.h");
 
@@ -377,7 +377,7 @@ namespace ssao
 
     for (int i = 0; i < MAX_SAMPLES; i++)
     {
-      newTexture(textures.hbao_randomview[i], GL_TEXTURE_2D);
+      glGenTextures(1, &textures.hbao_randomview[i]);
       glTextureView(textures.hbao_randomview[i], GL_TEXTURE_2D, textures.hbao_random, GL_RGBA16_SNORM, 0, 1, i, 1);
       glBindTexture(GL_TEXTURE_2D, textures.hbao_randomview[i]);
       glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
@@ -585,7 +585,10 @@ namespace ssao
     glBindTexture (GL_TEXTURE_2D_ARRAY, 0);
 
     for (int i = 0; i < HBAO_RANDOM_ELEMENTS; i++){
-      newTexture(textures.hbao2_depthview[i], GL_TEXTURE_2D);
+      if (textures.hbao2_depthview[i]) {
+        glDeleteTextures(1, &textures.hbao2_depthview[i]);
+      }
+      glGenTextures(1, &textures.hbao2_depthview[i]);
       glTextureView(textures.hbao2_depthview[i], GL_TEXTURE_2D, textures.hbao2_deptharray, GL_R32F, 0, 1, i, 1);
       glBindTexture(GL_TEXTURE_2D, textures.hbao2_depthview[i]);
       glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
