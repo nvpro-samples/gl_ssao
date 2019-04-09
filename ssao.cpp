@@ -34,17 +34,17 @@
 #include <imgui/imgui_helper.h>
 #include <imgui/imgui_impl_gl.h>
 
-#include <nv_math/nv_math_glsltypes.h>
+#include <nvmath/nvmath_glsltypes.h>
 
-#include <nv_helpers/geometry.hpp>
-#include <nv_helpers/misc.hpp>
-#include <nv_helpers/cameracontrol.hpp>
-#include <nv_helpers/tnulled.hpp>
+#include <nvh/geometry.hpp>
+#include <nvh/misc.hpp>
+#include <nvh/cameracontrol.hpp>
+#include <nvh/tnulled.hpp>
 
-#include <nv_helpers_gl/appwindowprofiler_gl.hpp>
-#include <nv_helpers_gl/error_gl.hpp>
-#include <nv_helpers_gl/programmanager_gl.hpp>
-#include <nv_helpers_gl/base_gl.hpp>
+#include <nvgl/appwindowprofiler_gl.hpp>
+#include <nvgl/error_gl.hpp>
+#include <nvgl/programmanager_gl.hpp>
+#include <nvgl/base_gl.hpp>
 
 #include <noise/mersennetwister1.h>
 
@@ -61,9 +61,9 @@
 
 #define USE_AO_LAYERED_SINGLEPASS   AO_LAYERED_GS
 
-using namespace nv_helpers;
-using namespace nv_helpers_gl;
-using namespace nv_math;
+using namespace nvh;
+using namespace nvgl;
+using namespace nvmath;
 #include "common.h"
 
 namespace ssao
@@ -86,7 +86,7 @@ namespace ssao
   static const int        grid = 32;
   static const float      globalscale = 16.0f;
 
-  class Sample : public nv_helpers_gl::AppWindowProfilerGL
+  class Sample : public nvgl::AppWindowProfilerGL
   {
     enum AlgorithmType {
       ALGORITHM_NONE,
@@ -123,7 +123,7 @@ namespace ssao
     } programs;
 
     struct {
-      nv_helpers::TNulled<GLuint>
+      nvh::TNulled<GLuint>
         scene,
         depthlinear,
         viewnormal,
@@ -133,7 +133,7 @@ namespace ssao
     } fbos;
 
     struct {
-      nv_helpers::TNulled<GLuint>
+      nvh::TNulled<GLuint>
         scene_vbo,
         scene_ibo,
         scene_ubo,
@@ -141,7 +141,7 @@ namespace ssao
     } buffers;
 
     struct {
-      nv_helpers::TNulled<GLuint>
+      nvh::TNulled<GLuint>
         scene_color,
         scene_depthstencil,
         scene_depthlinear,
@@ -157,15 +157,15 @@ namespace ssao
 
     struct Vertex {
 
-      Vertex(const geometry::Vertex& vertex){
-        position  = vertex.position;
-        normal    = vertex.normal;
-        color     = nv_math::vec4(1.0f);
+      Vertex(const geometry::Vertex& vertex) {
+        position = vertex.position;
+        normal = vertex.normal;
+        color = nvmath::vec4(1.0f);
       }
 
-      nv_math::vec4   position;
-      nv_math::vec4   normal;
-      nv_math::vec4   color;
+      nvmath::vec4   position;
+      nvmath::vec4   normal;
+      nvmath::vec4   color;
     };
 
 
@@ -187,14 +187,14 @@ namespace ssao
       float orthoheight = 1.0f;
       bool  ortho = false;
       mat4  matrix;
-      
-      void update(int width, int height){
+
+      void update(int width, int height) {
         float aspect = float(width) / float(height);
-        if (ortho){
-          matrix = nv_math::ortho(-orthoheight*0.5f*aspect, orthoheight*0.5f*aspect, -orthoheight*0.5f, orthoheight*0.5f, nearplane, farplane);
+        if (ortho) {
+          matrix = nvmath::ortho(-orthoheight*0.5f*aspect, orthoheight*0.5f*aspect, -orthoheight*0.5f, orthoheight*0.5f, nearplane, farplane);
         }
-        else{
-          matrix = nv_math::perspective(fov, aspect, nearplane, farplane);
+        else {
+          matrix = nvmath::perspective(fov, aspect, nearplane, farplane);
         }
       }
     };
@@ -236,23 +236,30 @@ namespace ssao
     void end() {
       ImGui::ShutdownGL();
     }
-    // return true to prevent m_window updates
-    bool mouse_pos    (int x, int y) {
+    // return true to prevent m_windowState updates
+    bool mouse_pos(int x, int y) {
       return ImGuiH::mouse_pos(x, y);
     }
-    bool mouse_button (int button, int action) {
+    bool mouse_button(int button, int action) {
       return ImGuiH::mouse_button(button, action);
     }
-    bool mouse_wheel  (int wheel) {
+    bool mouse_wheel(int wheel) {
       return ImGuiH::mouse_wheel(wheel);
     }
     bool key_char(int button) {
       return ImGuiH::key_char(button);
     }
-    bool key_button   (int button, int action, int mods) {
-      return ImGuiH::key_button(button,action,mods);
+    bool key_button(int button, int action, int mods) {
+      return ImGuiH::key_button(button, action, mods);
     }
-    
+
+  public:
+    Sample() {
+      m_parameterList.add("algorithm", (uint32_t*) &m_tweak.algorithm);
+      m_parameterList.add("blur", &m_tweak.blur);
+      m_parameterList.add("ortho", &m_tweak.ortho);
+      m_parameterList.add("msaa", &m_tweak.samples);
+    }
   };
 
   bool Sample::initProgram()
@@ -433,7 +440,7 @@ namespace ssao
 
           pos.z = depth;
 
-          mat4  matrix    = nv_math::translation_mat4( pos) * nv_math::scale_mat4( size);
+          mat4  matrix    = nvmath::translation_mat4( pos) * nvmath::scale_mat4( size);
 
           uint  oldverts  = scene.getVerticesCount();
           uint  oldinds   = scene.getTriangleIndicesCount();
@@ -638,7 +645,7 @@ namespace ssao
 
   bool Sample::begin()
   {
-    ImGuiH::Init(m_window.m_viewsize[0], m_window.m_viewsize[1], this);
+    ImGuiH::Init(m_windowState.m_viewSize[0], m_windowState.m_viewSize[1], this);
     ImGui::InitGL();
 
     glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
@@ -654,7 +661,7 @@ namespace ssao
     validated = validated && initProgram();
     validated = validated && initMisc();
     validated = validated && initScene();
-    validated = validated && initFramebuffers(m_window.m_viewsize[0],m_window.m_viewsize[1],m_tweak.samples);
+    validated = validated && initFramebuffers(m_windowState.m_viewSize[0],m_windowState.m_viewSize[1],m_tweak.samples);
 
     m_ui.enumAdd(GUI_ALGORITHM, ALGORITHM_NONE, "none");
     m_ui.enumAdd(GUI_ALGORITHM, ALGORITHM_HBAO_CACHEAWARE, "hbao cache-aware");
@@ -668,7 +675,7 @@ namespace ssao
     m_control.m_sceneOrbit = vec3(0.0f);
     m_control.m_sceneDimension = float(globalscale);
     m_control.m_sceneOrthoZoom = m_control.m_sceneDimension;
-    m_control.m_viewMatrix = nv_math::look_at(m_control.m_sceneOrbit - (vec3(0.4f,-0.35f,-0.6f)*m_control.m_sceneDimension*0.9f), m_control.m_sceneOrbit, vec3(0,1,0));
+    m_control.m_viewMatrix = nvmath::look_at(m_control.m_sceneOrbit - (vec3(0.4f,-0.35f,-0.6f)*m_control.m_sceneDimension*0.9f), m_control.m_sceneOrbit, vec3(0,1,0));
     
     m_projection.nearplane = m_control.m_sceneDimension * 0.01f;
     m_projection.farplane  = m_control.m_sceneDimension * 10.0f;
@@ -679,8 +686,8 @@ namespace ssao
 
   void Sample::processUI(double time)
   {
-    int width = m_window.m_viewsize[0];
-    int height = m_window.m_viewsize[1];
+    int width = m_windowState.m_viewSize[0];
+    int height = m_windowState.m_viewSize[1];
 
     // Update imgui configuration
     auto &imgui_io = ImGui::GetIO();
@@ -765,7 +772,7 @@ namespace ssao
 
   void Sample::drawLinearDepth(const Projection& projection, int width, int height, int sampleIdx)
   {
-    NV_PROFILE_SECTION("linearize");
+    NV_PROFILE_GL_SECTION("linearize");
     glBindFramebuffer(GL_FRAMEBUFFER, fbos.depthlinear);
 
     if (m_tweak.samples > 1){
@@ -773,34 +780,34 @@ namespace ssao
       glUniform4f(0, projection.nearplane * projection.farplane, projection.nearplane - projection.farplane, projection.farplane, projection.ortho ? 0.0f : 1.0f);
       glUniform1i(1,sampleIdx);
 
-      nv_helpers_gl::bindMultiTexture(GL_TEXTURE0, GL_TEXTURE_2D_MULTISAMPLE, textures.scene_depthstencil);
+      nvgl::bindMultiTexture(GL_TEXTURE0, GL_TEXTURE_2D_MULTISAMPLE, textures.scene_depthstencil);
       glDrawArrays(GL_TRIANGLES,0,3);
-      nv_helpers_gl::bindMultiTexture(GL_TEXTURE0, GL_TEXTURE_2D_MULTISAMPLE, 0);
+      nvgl::bindMultiTexture(GL_TEXTURE0, GL_TEXTURE_2D_MULTISAMPLE, 0);
     }
     else{
       glUseProgram(m_progManager.get(programs.depth_linearize));
       glUniform4f(0, projection.nearplane * projection.farplane, projection.nearplane - projection.farplane, projection.farplane, projection.ortho ? 0.0f : 1.0f);
 
-      nv_helpers_gl::bindMultiTexture(GL_TEXTURE0, GL_TEXTURE_2D, textures.scene_depthstencil);
+      nvgl::bindMultiTexture(GL_TEXTURE0, GL_TEXTURE_2D, textures.scene_depthstencil);
       glDrawArrays(GL_TRIANGLES,0,3);
-      nv_helpers_gl::bindMultiTexture(GL_TEXTURE0, GL_TEXTURE_2D, 0);
+      nvgl::bindMultiTexture(GL_TEXTURE0, GL_TEXTURE_2D, 0);
     }
   }
 
   void Sample::drawHbaoBlur(const Projection& projection, int width, int height, int sampleIdx)
   {
-    NV_PROFILE_SECTION("ssaoblur");
+    NV_PROFILE_GL_SECTION("ssaoblur");
 
     float meters2viewspace = 1.0f;
 
     glUseProgram(m_progManager.get(USE_AO_SPECIALBLUR ? programs.hbao_blur : programs.bilateralblur));
-    nv_helpers_gl::bindMultiTexture(GL_TEXTURE1, GL_TEXTURE_2D, textures.scene_depthlinear);
+    nvgl::bindMultiTexture(GL_TEXTURE1, GL_TEXTURE_2D, textures.scene_depthlinear);
 
     glUniform1f(0,m_tweak.blurSharpness/meters2viewspace);
 
     glDrawBuffer(GL_COLOR_ATTACHMENT1);
 
-    nv_helpers_gl::bindMultiTexture(GL_TEXTURE0, GL_TEXTURE_2D, textures.hbao_result);
+    nvgl::bindMultiTexture(GL_TEXTURE0, GL_TEXTURE_2D, textures.hbao_result);
     glUniform2f(1,1.0f/float(width),0);
     glDrawArrays(GL_TRIANGLES,0,3);
 
@@ -819,7 +826,7 @@ namespace ssao
     glUniform1f(0,m_tweak.blurSharpness/meters2viewspace);
 #endif
 
-    nv_helpers_gl::bindMultiTexture(GL_TEXTURE0, GL_TEXTURE_2D, textures.hbao_blur);
+    nvgl::bindMultiTexture(GL_TEXTURE0, GL_TEXTURE_2D, textures.hbao_blur);
     glUniform2f(1,0,1.0f/float(height));
     glDrawArrays(GL_TRIANGLES,0,3);
   }
@@ -832,7 +839,7 @@ namespace ssao
     drawLinearDepth(projection,width,height,sampleIdx);
 
     {
-      NV_PROFILE_SECTION("ssaocalc");
+      NV_PROFILE_GL_SECTION("ssaocalc");
 
       if (m_tweak.blur){
         glBindFramebuffer(GL_FRAMEBUFFER, fbos.hbao_calc);
@@ -854,8 +861,8 @@ namespace ssao
       glBindBufferBase(GL_UNIFORM_BUFFER,0,buffers.hbao_ubo);
       glNamedBufferSubData(buffers.hbao_ubo,0,sizeof(HBAOData),&m_hbaoUbo);
 
-      nv_helpers_gl::bindMultiTexture(GL_TEXTURE0, GL_TEXTURE_2D, textures.scene_depthlinear);
-      nv_helpers_gl::bindMultiTexture(GL_TEXTURE1, GL_TEXTURE_2D, textures.hbao_randomview[sampleIdx]);
+      nvgl::bindMultiTexture(GL_TEXTURE0, GL_TEXTURE_2D, textures.scene_depthlinear);
+      nvgl::bindMultiTexture(GL_TEXTURE1, GL_TEXTURE_2D, textures.hbao_randomview[sampleIdx]);
       glDrawArrays(GL_TRIANGLES,0,3);
     }
 
@@ -868,8 +875,8 @@ namespace ssao
     glDisable(GL_SAMPLE_MASK);
     glSampleMaski(0, ~0);
 
-    nv_helpers_gl::bindMultiTexture(GL_TEXTURE0, GL_TEXTURE_2D, 0);
-    nv_helpers_gl::bindMultiTexture(GL_TEXTURE1, GL_TEXTURE_2D, 0);
+    nvgl::bindMultiTexture(GL_TEXTURE0, GL_TEXTURE_2D, 0);
+    nvgl::bindMultiTexture(GL_TEXTURE1, GL_TEXTURE_2D, 0);
 
     glUseProgram(0);
   }
@@ -884,7 +891,7 @@ namespace ssao
     drawLinearDepth(projection,width,height,sampleIdx);
 
     {
-      NV_PROFILE_SECTION("viewnormal");
+      NV_PROFILE_GL_SECTION("viewnormal");
       glBindFramebuffer(GL_FRAMEBUFFER, fbos.viewnormal);
 
       glUseProgram(m_progManager.get(programs.viewnormal));
@@ -893,18 +900,18 @@ namespace ssao
       glUniform1i (1, m_hbaoUbo.projOrtho);
       glUniform2fv(2, 1, m_hbaoUbo.InvFullResolution.get_value());
 
-      nv_helpers_gl::bindMultiTexture(GL_TEXTURE0, GL_TEXTURE_2D, textures.scene_depthlinear);
+      nvgl::bindMultiTexture(GL_TEXTURE0, GL_TEXTURE_2D, textures.scene_depthlinear);
       glDrawArrays(GL_TRIANGLES,0,3);
-      nv_helpers_gl::bindMultiTexture(GL_TEXTURE0, GL_TEXTURE_2D, 0);
+      nvgl::bindMultiTexture(GL_TEXTURE0, GL_TEXTURE_2D, 0);
     }
 
     {
-      NV_PROFILE_SECTION("deinterleave");
+      NV_PROFILE_GL_SECTION("deinterleave");
       glBindFramebuffer(GL_FRAMEBUFFER, fbos.hbao2_deinterleave);
       glViewport(0,0,quarterWidth,quarterHeight);
 
       glUseProgram(m_progManager.get(programs.hbao2_deinterleave));
-      nv_helpers_gl::bindMultiTexture(GL_TEXTURE0, GL_TEXTURE_2D, textures.scene_depthlinear);
+      nvgl::bindMultiTexture(GL_TEXTURE0, GL_TEXTURE_2D, textures.scene_depthlinear);
 
       for (int i = 0; i < HBAO_RANDOM_ELEMENTS; i+= NUM_MRT){
         glUniform4f(0, float(i % 4) + 0.5f, float(i / 4) + 0.5f, m_hbaoUbo.InvFullResolution.x, m_hbaoUbo.InvFullResolution.y);
@@ -917,13 +924,13 @@ namespace ssao
     }
     
     {
-      NV_PROFILE_SECTION("ssaocalc");
+      NV_PROFILE_GL_SECTION("ssaocalc");
 
       glBindFramebuffer(GL_FRAMEBUFFER, fbos.hbao2_calc);
       glViewport(0,0,quarterWidth,quarterHeight);
 
       glUseProgram(m_progManager.get(USE_AO_SPECIALBLUR && m_tweak.blur ? programs.hbao2_calc_blur : programs.hbao2_calc));
-      nv_helpers_gl::bindMultiTexture(GL_TEXTURE1, GL_TEXTURE_2D, textures.scene_viewnormal);
+      nvgl::bindMultiTexture(GL_TEXTURE1, GL_TEXTURE_2D, textures.scene_viewnormal);
 
       glBindBufferBase(GL_UNIFORM_BUFFER,0,buffers.hbao_ubo);
       glNamedBufferSubData(buffers.hbao_ubo,0,sizeof(HBAOData),&m_hbaoUbo);
@@ -933,7 +940,7 @@ namespace ssao
       // we draw all layers at once, and use image writes to update the array texture
       // this buys additional performance :)
 
-      nv_helpers_gl::bindMultiTexture(GL_TEXTURE0, GL_TEXTURE_2D_ARRAY, textures.hbao2_deptharray);
+      nvgl::bindMultiTexture(GL_TEXTURE0, GL_TEXTURE_2D_ARRAY, textures.hbao2_deptharray);
 #if USE_AO_LAYERED_SINGLEPASS == AO_LAYERED_IMAGE
       glBindImageTexture( 0, textures.hbao2_resultarray, 0, GL_TRUE, 0, GL_WRITE_ONLY, USE_AO_SPECIALBLUR ? GL_RG16F : GL_R8);
 #endif
@@ -946,7 +953,7 @@ namespace ssao
         glUniform2f(0, float(i % 4) + 0.5f, float(i / 4) + 0.5f);
         glUniform4fv(1, 1, m_hbaoRandom[i].get_value());
 
-        nv_helpers_gl::bindMultiTexture(GL_TEXTURE0, GL_TEXTURE_2D, textures.hbao2_depthview[i]);
+        nvgl::bindMultiTexture(GL_TEXTURE0, GL_TEXTURE_2D, textures.hbao2_depthview[i]);
         glFramebufferTextureLayer(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, textures.hbao2_resultarray, 0, i);
 
         glDrawArrays(GL_TRIANGLES,0,3);
@@ -955,7 +962,7 @@ namespace ssao
     }
 
     {
-      NV_PROFILE_SECTION("reinterleave");
+      NV_PROFILE_GL_SECTION("reinterleave");
 
       if (m_tweak.blur){
         glBindFramebuffer(GL_FRAMEBUFFER, fbos.hbao_calc);
@@ -975,9 +982,9 @@ namespace ssao
 
       glUseProgram(m_progManager.get(USE_AO_SPECIALBLUR && m_tweak.blur ? programs.hbao2_reinterleave_blur : programs.hbao2_reinterleave));
 
-      nv_helpers_gl::bindMultiTexture(GL_TEXTURE0, GL_TEXTURE_2D_ARRAY, textures.hbao2_resultarray);
+      nvgl::bindMultiTexture(GL_TEXTURE0, GL_TEXTURE_2D_ARRAY, textures.hbao2_resultarray);
       glDrawArrays(GL_TRIANGLES,0,3);
-      nv_helpers_gl::bindMultiTexture(GL_TEXTURE0, GL_TEXTURE_2D_ARRAY, 0);
+      nvgl::bindMultiTexture(GL_TEXTURE0, GL_TEXTURE_2D_ARRAY, 0);
     }
 
     if (m_tweak.blur){
@@ -989,8 +996,8 @@ namespace ssao
     glDisable(GL_SAMPLE_MASK);
     glSampleMaski(0,~0);
 
-    nv_helpers_gl::bindMultiTexture(GL_TEXTURE0, GL_TEXTURE_2D, 0);
-    nv_helpers_gl::bindMultiTexture(GL_TEXTURE1, GL_TEXTURE_2D, 0);
+    nvgl::bindMultiTexture(GL_TEXTURE0, GL_TEXTURE_2D, 0);
+    nvgl::bindMultiTexture(GL_TEXTURE1, GL_TEXTURE_2D, 0);
 
     glUseProgram(0);
 
@@ -1000,12 +1007,14 @@ namespace ssao
 
   void Sample::think(double time)
   {
-    m_control.m_sceneOrtho = m_tweak.ortho;
-    m_control.processActions(m_window.m_viewsize,
-      nv_math::vec2f(m_window.m_mouseCurrent[0],m_window.m_mouseCurrent[1]),
-      m_window.m_mouseButtonFlags, m_window.m_wheel);
+    NV_PROFILE_GL_SECTION("Frame");
 
-    if (m_window.onPress(KEY_R)){
+    m_control.m_sceneOrtho = m_tweak.ortho;
+    m_control.processActions(m_windowState.m_viewSize,
+      nvmath::vec2f(m_windowState.m_mouseCurrent[0],m_windowState.m_mouseCurrent[1]),
+      m_windowState.m_mouseButtonFlags, m_windowState.m_mouseWheel);
+
+    if (m_windowState.onPress(KEY_R)){
       m_progManager.reloadPrograms();
     }
     if (!m_progManager.areProgramsValid()){
@@ -1015,8 +1024,8 @@ namespace ssao
 
     processUI(time);
 
-    int width   = m_window.m_viewsize[0];
-    int height  = m_window.m_viewsize[1];
+    int width   = m_windowState.m_viewSize[0];
+    int height  = m_windowState.m_viewSize[1];
 
     m_projection.ortho       = m_control.m_sceneOrtho;
     m_projection.orthoheight = m_control.m_sceneOrthoZoom;
@@ -1028,12 +1037,12 @@ namespace ssao
     m_tweakLast = m_tweak;
 
     {
-      NV_PROFILE_SECTION("Scene");
+      NV_PROFILE_GL_SECTION("Scene");
       glViewport(0, 0, width, height);
 
       glBindFramebuffer(GL_FRAMEBUFFER, fbos.scene);
 
-      nv_math::vec4   bgColor(0.2,0.2,0.2,0.0);
+      nvmath::vec4   bgColor(0.2,0.2,0.2,0.0);
       glClearBufferfv(GL_COLOR,0,&bgColor.x);
 
       glClearDepth(1.0);
@@ -1042,11 +1051,11 @@ namespace ssao
 
       m_sceneUbo.viewport = uvec2(width,height);
      
-      nv_math::mat4 view = m_control.m_viewMatrix;
+      nvmath::mat4 view = m_control.m_viewMatrix;
 
       m_sceneUbo.viewProjMatrix = m_projection.matrix * view;
       m_sceneUbo.viewMatrix = view;
-      m_sceneUbo.viewMatrixIT = nv_math::transpose(nv_math::invert(view));
+      m_sceneUbo.viewMatrixIT = nvmath::transpose(nvmath::invert(view));
 
       glUseProgram(m_progManager.get(programs.draw_scene));
       glBindBufferBase(GL_UNIFORM_BUFFER, UBO_SCENE, buffers.scene_ubo);
@@ -1071,9 +1080,9 @@ namespace ssao
     }
 
     {
-      NV_PROFILE_SECTION("ssao");
+      NV_PROFILE_GL_SECTION("ssao");
 
-      for (int sample = 0; sample < m_tweak.samples; sample++)
+      for (int sample = 0; sample < std::max(1,m_tweak.samples); sample++)
       {
         switch(m_tweak.algorithm){
         case ALGORITHM_HBAO_CLASSIC:
@@ -1087,7 +1096,7 @@ namespace ssao
     }
 
     {
-      NV_PROFILE_SECTION("Blit");
+      NV_PROFILE_GL_SECTION("Blit");
       // blit to background
       glBindFramebuffer(GL_READ_FRAMEBUFFER, fbos.scene);
       glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
@@ -1097,7 +1106,7 @@ namespace ssao
     }
     
     {
-      NV_PROFILE_SECTION("GUI");
+      NV_PROFILE_GL_SECTION("GUI");
       ImGui::Render();
       ImGui::RenderDrawDataGL(ImGui::GetDrawData());
     }
@@ -1113,17 +1122,13 @@ namespace ssao
 
 using namespace ssao;
 
-int sample_main(int argc, const char** argv)
+int main(int argc, const char** argv)
 {
-  SETLOGFILENAME();
+  NVPWindow::System system(argv[0], PROJECT_NAME);
   Sample sample;
   return sample.run(
     PROJECT_NAME,
     argc, argv,
-    SAMPLE_SIZE_WIDTH, SAMPLE_SIZE_HEIGHT,
-    SAMPLE_MAJOR_VERSION, SAMPLE_MINOR_VERSION);
+    SAMPLE_SIZE_WIDTH, SAMPLE_SIZE_HEIGHT);
 }
-void sample_print(int level, const char * fmt)
-{
 
-}
