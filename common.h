@@ -36,6 +36,7 @@
 #ifdef __cplusplus
 namespace ssao
 {
+  using namespace nvmath;
 #endif
 
 struct SceneData {

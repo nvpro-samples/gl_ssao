@@ -39,7 +39,6 @@
 #include <nvh/geometry.hpp>
 #include <nvh/misc.hpp>
 #include <nvh/cameracontrol.hpp>
-#include <nvh/tnulled.hpp>
 
 #include <nvgl/appwindowprofiler_gl.hpp>
 #include <nvgl/error_gl.hpp>
@@ -61,9 +60,7 @@
 
 #define USE_AO_LAYERED_SINGLEPASS   AO_LAYERED_GS
 
-using namespace nvh;
-using namespace nvgl;
-using namespace nvmath;
+
 #include "common.h"
 
 namespace ssao
@@ -101,7 +98,7 @@ namespace ssao
     };
 
     struct {
-      ProgramManager::ProgramID
+      nvgl::ProgramID
         draw_scene,
         depth_linearize,
         depth_linearize_msaa,
@@ -123,41 +120,38 @@ namespace ssao
     } programs;
 
     struct {
-      nvh::TNulled<GLuint>
-        scene,
-        depthlinear,
-        viewnormal,
-        hbao_calc,
-        hbao2_deinterleave,
-        hbao2_calc;
+      GLuint  scene = 0;
+      GLuint  depthlinear = 0;
+      GLuint  viewnormal = 0;
+      GLuint  hbao_calc = 0;
+      GLuint  hbao2_deinterleave = 0;
+      GLuint  hbao2_calc = 0;
     } fbos;
 
     struct {
-      nvh::TNulled<GLuint>
-        scene_vbo,
-        scene_ibo,
-        scene_ubo,
-        hbao_ubo;
+      GLuint  scene_vbo = 0;
+      GLuint  scene_ibo = 0;
+      GLuint  scene_ubo = 0;
+      GLuint  hbao_ubo = 0;
     } buffers;
 
     struct {
-      nvh::TNulled<GLuint>
-        scene_color,
-        scene_depthstencil,
-        scene_depthlinear,
-        scene_viewnormal,
-        hbao_result,
-        hbao_blur,
-        hbao_random,
-        hbao_randomview[MAX_SAMPLES],
-        hbao2_deptharray,
-        hbao2_depthview[HBAO_RANDOM_ELEMENTS],
-        hbao2_resultarray;
+      GLuint  scene_color = 0;
+      GLuint  scene_depthstencil = 0;
+      GLuint  scene_depthlinear = 0;
+      GLuint  scene_viewnormal = 0;
+      GLuint  hbao_result = 0;
+      GLuint  hbao_blur = 0;
+      GLuint  hbao_random = 0;
+      GLuint  hbao_randomview[MAX_SAMPLES] = {0};
+      GLuint  hbao2_deptharray = 0;
+      GLuint  hbao2_depthview[HBAO_RANDOM_ELEMENTS] = {0};
+      GLuint  hbao2_resultarray = 0;
     } textures;
 
     struct Vertex {
 
-      Vertex(const geometry::Vertex& vertex) {
+      Vertex(const nvh::geometry::Vertex& vertex) {
         position = vertex.position;
         normal = vertex.normal;
         color = nvmath::vec4(1.0f);
@@ -202,8 +196,9 @@ namespace ssao
     ImGuiH::Registry  m_ui;
     double            m_uiTime = 0;
 
-    ProgramManager    m_progManager;
-    CameraControl     m_control;
+    nvgl::ProgramManager    m_progManager;
+    nvh::CameraControl      m_control;
+
     Tweak             m_tweak;
     Tweak             m_tweakLast;
 
@@ -265,80 +260,80 @@ namespace ssao
   bool Sample::initProgram()
   {
     bool validated(true);
-    m_progManager.m_filetype = ShaderFileManager::FILETYPE_GLSL;
+    m_progManager.m_filetype = nvh::ShaderFileManager::FILETYPE_GLSL;
     m_progManager.addDirectory( std::string("GLSL_" PROJECT_NAME));
-    m_progManager.addDirectory( sysExePath() + std::string(PROJECT_RELDIRECTORY));
+    m_progManager.addDirectory( exePath() + std::string(PROJECT_RELDIRECTORY));
     //m_progManager.addDirectory( std::string(PROJECT_ABSDIRECTORY));
 
-    m_progManager.registerInclude("common.h", "common.h");
+    m_progManager.registerInclude("common.h");
 
-    m_progManager.m_prepend = ProgramManager::format("#define AO_LAYERED %d\n", USE_AO_LAYERED_SINGLEPASS);
+    m_progManager.m_prepend = nvgl::ProgramManager::format("#define AO_LAYERED %d\n", USE_AO_LAYERED_SINGLEPASS);
 
     programs.draw_scene = m_progManager.createProgram(
-      ProgramManager::Definition(GL_VERTEX_SHADER,          "scene.vert.glsl"),
-      ProgramManager::Definition(GL_FRAGMENT_SHADER,        "scene.frag.glsl"));
+      nvgl::ProgramManager::Definition(GL_VERTEX_SHADER,          "scene.vert.glsl"),
+      nvgl::ProgramManager::Definition(GL_FRAGMENT_SHADER,        "scene.frag.glsl"));
 
     programs.bilateralblur = m_progManager.createProgram(
-      ProgramManager::Definition(GL_VERTEX_SHADER,          "fullscreenquad.vert.glsl"),
-      ProgramManager::Definition(GL_FRAGMENT_SHADER,        "bilateralblur.frag.glsl"));
+      nvgl::ProgramManager::Definition(GL_VERTEX_SHADER,          "fullscreenquad.vert.glsl"),
+      nvgl::ProgramManager::Definition(GL_FRAGMENT_SHADER,        "bilateralblur.frag.glsl"));
 
     programs.depth_linearize = m_progManager.createProgram(
-      ProgramManager::Definition(GL_VERTEX_SHADER,          "fullscreenquad.vert.glsl"),
-      ProgramManager::Definition(GL_FRAGMENT_SHADER,        "#define DEPTHLINEARIZE_MSAA 0\n", "depthlinearize.frag.glsl"));
+      nvgl::ProgramManager::Definition(GL_VERTEX_SHADER,          "fullscreenquad.vert.glsl"),
+      nvgl::ProgramManager::Definition(GL_FRAGMENT_SHADER,        "#define DEPTHLINEARIZE_MSAA 0\n", "depthlinearize.frag.glsl"));
 
     programs.depth_linearize_msaa = m_progManager.createProgram(
-      ProgramManager::Definition(GL_VERTEX_SHADER,          "fullscreenquad.vert.glsl"),
-      ProgramManager::Definition(GL_FRAGMENT_SHADER,        "#define DEPTHLINEARIZE_MSAA 1\n", "depthlinearize.frag.glsl"));
+      nvgl::ProgramManager::Definition(GL_VERTEX_SHADER,          "fullscreenquad.vert.glsl"),
+      nvgl::ProgramManager::Definition(GL_FRAGMENT_SHADER,        "#define DEPTHLINEARIZE_MSAA 1\n", "depthlinearize.frag.glsl"));
 
     programs.viewnormal = m_progManager.createProgram(
-      ProgramManager::Definition(GL_VERTEX_SHADER,          "fullscreenquad.vert.glsl"),
-      ProgramManager::Definition(GL_FRAGMENT_SHADER,        "viewnormal.frag.glsl"));
+      nvgl::ProgramManager::Definition(GL_VERTEX_SHADER,          "fullscreenquad.vert.glsl"),
+      nvgl::ProgramManager::Definition(GL_FRAGMENT_SHADER,        "viewnormal.frag.glsl"));
 
     programs.displaytex = m_progManager.createProgram(
-      ProgramManager::Definition(GL_VERTEX_SHADER,          "fullscreenquad.vert.glsl"),
-      ProgramManager::Definition(GL_FRAGMENT_SHADER,        "displaytex.frag.glsl"));
+      nvgl::ProgramManager::Definition(GL_VERTEX_SHADER,          "fullscreenquad.vert.glsl"),
+      nvgl::ProgramManager::Definition(GL_FRAGMENT_SHADER,        "displaytex.frag.glsl"));
 
     programs.hbao_calc = m_progManager.createProgram(
-      ProgramManager::Definition(GL_VERTEX_SHADER,          "fullscreenquad.vert.glsl"),
-      ProgramManager::Definition(GL_FRAGMENT_SHADER,        "#define AO_DEINTERLEAVED 0\n#define AO_BLUR 0\n", "hbao.frag.glsl"));
+      nvgl::ProgramManager::Definition(GL_VERTEX_SHADER,          "fullscreenquad.vert.glsl"),
+      nvgl::ProgramManager::Definition(GL_FRAGMENT_SHADER,        "#define AO_DEINTERLEAVED 0\n#define AO_BLUR 0\n", "hbao.frag.glsl"));
 
     programs.hbao_calc_blur = m_progManager.createProgram(
-      ProgramManager::Definition(GL_VERTEX_SHADER,          "fullscreenquad.vert.glsl"),
-      ProgramManager::Definition(GL_FRAGMENT_SHADER,        "#define AO_DEINTERLEAVED 0\n#define AO_BLUR 1\n", "hbao.frag.glsl"));
+      nvgl::ProgramManager::Definition(GL_VERTEX_SHADER,          "fullscreenquad.vert.glsl"),
+      nvgl::ProgramManager::Definition(GL_FRAGMENT_SHADER,        "#define AO_DEINTERLEAVED 0\n#define AO_BLUR 1\n", "hbao.frag.glsl"));
 
     programs.hbao_blur = m_progManager.createProgram(
-      ProgramManager::Definition(GL_VERTEX_SHADER,          "fullscreenquad.vert.glsl"),
-      ProgramManager::Definition(GL_FRAGMENT_SHADER,        "#define AO_BLUR_PRESENT 0\n","hbao_blur.frag.glsl"));
+      nvgl::ProgramManager::Definition(GL_VERTEX_SHADER,          "fullscreenquad.vert.glsl"),
+      nvgl::ProgramManager::Definition(GL_FRAGMENT_SHADER,        "#define AO_BLUR_PRESENT 0\n","hbao_blur.frag.glsl"));
 
     programs.hbao_blur2 = m_progManager.createProgram(
-      ProgramManager::Definition(GL_VERTEX_SHADER,          "fullscreenquad.vert.glsl"),
-      ProgramManager::Definition(GL_FRAGMENT_SHADER,        "#define AO_BLUR_PRESENT 1\n","hbao_blur.frag.glsl"));
+      nvgl::ProgramManager::Definition(GL_VERTEX_SHADER,          "fullscreenquad.vert.glsl"),
+      nvgl::ProgramManager::Definition(GL_FRAGMENT_SHADER,        "#define AO_BLUR_PRESENT 1\n","hbao_blur.frag.glsl"));
 
     programs.hbao2_calc = m_progManager.createProgram(
-      ProgramManager::Definition(GL_VERTEX_SHADER,          "fullscreenquad.vert.glsl"),
+      nvgl::ProgramManager::Definition(GL_VERTEX_SHADER,          "fullscreenquad.vert.glsl"),
 #if USE_AO_LAYERED_SINGLEPASS == AO_LAYERED_GS
-      ProgramManager::Definition(GL_GEOMETRY_SHADER,        "fullscreenquad.geo.glsl"),
+      nvgl::ProgramManager::Definition(GL_GEOMETRY_SHADER,        "fullscreenquad.geo.glsl"),
 #endif
-      ProgramManager::Definition(GL_FRAGMENT_SHADER,        "#define AO_DEINTERLEAVED 1\n#define AO_BLUR 0\n", "hbao.frag.glsl"));
+      nvgl::ProgramManager::Definition(GL_FRAGMENT_SHADER,        "#define AO_DEINTERLEAVED 1\n#define AO_BLUR 0\n", "hbao.frag.glsl"));
 
     programs.hbao2_calc_blur = m_progManager.createProgram(
-      ProgramManager::Definition(GL_VERTEX_SHADER,          "fullscreenquad.vert.glsl"),
+      nvgl::ProgramManager::Definition(GL_VERTEX_SHADER,          "fullscreenquad.vert.glsl"),
 #if USE_AO_LAYERED_SINGLEPASS == AO_LAYERED_GS
-      ProgramManager::Definition(GL_GEOMETRY_SHADER,        "fullscreenquad.geo.glsl"),
+      nvgl::ProgramManager::Definition(GL_GEOMETRY_SHADER,        "fullscreenquad.geo.glsl"),
 #endif
-      ProgramManager::Definition(GL_FRAGMENT_SHADER,        "#define AO_DEINTERLEAVED 1\n#define AO_BLUR 1\n", "hbao.frag.glsl"));
+      nvgl::ProgramManager::Definition(GL_FRAGMENT_SHADER,        "#define AO_DEINTERLEAVED 1\n#define AO_BLUR 1\n", "hbao.frag.glsl"));
 
     programs.hbao2_deinterleave = m_progManager.createProgram(
-      ProgramManager::Definition(GL_VERTEX_SHADER,          "fullscreenquad.vert.glsl"),
-      ProgramManager::Definition(GL_FRAGMENT_SHADER,        "hbao_deinterleave.frag.glsl"));
+      nvgl::ProgramManager::Definition(GL_VERTEX_SHADER,          "fullscreenquad.vert.glsl"),
+      nvgl::ProgramManager::Definition(GL_FRAGMENT_SHADER,        "hbao_deinterleave.frag.glsl"));
 
     programs.hbao2_reinterleave = m_progManager.createProgram(
-      ProgramManager::Definition(GL_VERTEX_SHADER,          "fullscreenquad.vert.glsl"),
-      ProgramManager::Definition(GL_FRAGMENT_SHADER,        "#define AO_BLUR 0\n","hbao_reinterleave.frag.glsl"));
+      nvgl::ProgramManager::Definition(GL_VERTEX_SHADER,          "fullscreenquad.vert.glsl"),
+      nvgl::ProgramManager::Definition(GL_FRAGMENT_SHADER,        "#define AO_BLUR 0\n","hbao_reinterleave.frag.glsl"));
 
     programs.hbao2_reinterleave_blur = m_progManager.createProgram(
-      ProgramManager::Definition(GL_VERTEX_SHADER,          "fullscreenquad.vert.glsl"),
-      ProgramManager::Definition(GL_FRAGMENT_SHADER,        "#define AO_BLUR 1\n","hbao_reinterleave.frag.glsl"));
+      nvgl::ProgramManager::Definition(GL_VERTEX_SHADER,          "fullscreenquad.vert.glsl"),
+      nvgl::ProgramManager::Definition(GL_FRAGMENT_SHADER,        "#define AO_BLUR 1\n","hbao_reinterleave.frag.glsl"));
 
     validated = m_progManager.areProgramsValid();
 
@@ -374,7 +369,7 @@ namespace ssao
 #undef SCALE
     }
 
-    newTexture(textures.hbao_random, GL_TEXTURE_2D_ARRAY);
+    nvgl::newTexture(textures.hbao_random, GL_TEXTURE_2D_ARRAY);
     glBindTexture(GL_TEXTURE_2D_ARRAY,textures.hbao_random);
     glTexStorage3D (GL_TEXTURE_2D_ARRAY,1,GL_RGBA16_SNORM,HBAO_RANDOM_SIZE,HBAO_RANDOM_SIZE,MAX_SAMPLES);
     glTexSubImage3D(GL_TEXTURE_2D_ARRAY,0,0,0,0, HBAO_RANDOM_SIZE,HBAO_RANDOM_SIZE,MAX_SAMPLES,GL_RGBA,GL_SHORT,hbaoRandomShort);
@@ -392,7 +387,7 @@ namespace ssao
       glBindTexture(GL_TEXTURE_2D, 0);
     }
 
-    newBuffer(buffers.hbao_ubo);
+    nvgl::newBuffer(buffers.hbao_ubo);
     glNamedBufferStorage(buffers.hbao_ubo, sizeof(HBAOData), NULL, GL_DYNAMIC_STORAGE_BIT);
 
     return true;
@@ -401,13 +396,13 @@ namespace ssao
   bool Sample::initScene()
   {
     { // Scene Geometry
-      geometry::Mesh<Vertex>  scene;
+      nvh::geometry::Mesh<Vertex>  scene;
       const int LEVELS = 4;
       
       m_sceneObjects = 0;
       for (int i = 0; i < grid * grid; i++){
 
-        vec4 color(frand(),frand(),frand(),1.0f);
+        vec4 color(nvh::frand(),nvh::frand(),nvh::frand(),1.0f);
         color *= 0.25f;
         color += 0.75f;
 
@@ -422,13 +417,13 @@ namespace ssao
           float scale = globalscale * 0.5f/float(grid);
           if (l != 0){
             scale *= powf(0.9f,float(l));
-            scale *= frand()*0.5f + 0.5f;
+            scale *= nvh::frand()*0.5f + 0.5f;
           }
 
           vec3 size = vec3(scale);
           
 
-          size.z *= frand()*1.0f+1.0f; 
+          size.z *= nvh::frand()*1.0f+1.0f; 
           if (l != 0){
             size.z *= powf(0.7f,float(l));
           }
@@ -445,7 +440,7 @@ namespace ssao
           uint  oldverts  = scene.getVerticesCount();
           uint  oldinds   = scene.getTriangleIndicesCount();
 
-          geometry::Box<Vertex>::add(scene,matrix,2,2,2);
+          nvh::geometry::Box<Vertex>::add(scene,matrix,2,2,2);
 
           for (uint v = oldverts; v < scene.getVerticesCount(); v++){
             scene.m_vertices[v].color = color;
@@ -459,10 +454,10 @@ namespace ssao
 
       m_sceneTriangleIndices = scene.getTriangleIndicesCount();
 
-      newBuffer(buffers.scene_ibo);
+      nvgl::newBuffer(buffers.scene_ibo);
       glNamedBufferStorage(buffers.scene_ibo, scene.getTriangleIndicesSize(), &scene.m_indicesTriangles[0], 0);
 
-      newBuffer(buffers.scene_vbo);
+      nvgl::newBuffer(buffers.scene_vbo);
       glBindBuffer(GL_ARRAY_BUFFER, buffers.scene_vbo);
       glNamedBufferStorage(buffers.scene_vbo, scene.getVerticesSize(), &scene.m_vertices[0], 0);
 
@@ -476,7 +471,7 @@ namespace ssao
     }
 
     { // Scene UBO
-      newBuffer(buffers.scene_ubo);
+      nvgl::newBuffer(buffers.scene_ubo);
       glNamedBufferStorage(buffers.scene_ubo, sizeof(SceneData), NULL, GL_DYNAMIC_STORAGE_BIT);
     }
 
@@ -487,37 +482,37 @@ namespace ssao
   {
 
     if (samples > 1){
-      newTexture(textures.scene_color, GL_TEXTURE_2D_MULTISAMPLE);
+      nvgl::newTexture(textures.scene_color, GL_TEXTURE_2D_MULTISAMPLE);
       glBindTexture (GL_TEXTURE_2D_MULTISAMPLE, textures.scene_color);
       glTexStorage2DMultisample(GL_TEXTURE_2D_MULTISAMPLE, samples, GL_RGBA8, width, height, GL_FALSE);
       glBindTexture (GL_TEXTURE_2D_MULTISAMPLE, 0);
 
-      newTexture(textures.scene_depthstencil, GL_TEXTURE_2D_MULTISAMPLE);
+      nvgl::newTexture(textures.scene_depthstencil, GL_TEXTURE_2D_MULTISAMPLE);
       glBindTexture (GL_TEXTURE_2D_MULTISAMPLE, textures.scene_depthstencil);
       glTexStorage2DMultisample(GL_TEXTURE_2D_MULTISAMPLE, samples, GL_DEPTH24_STENCIL8, width, height, GL_FALSE);
       glBindTexture (GL_TEXTURE_2D_MULTISAMPLE, 0);
     }
     else
     {
-      newTexture(textures.scene_color, GL_TEXTURE_2D);
+      nvgl::newTexture(textures.scene_color, GL_TEXTURE_2D);
       glBindTexture (GL_TEXTURE_2D, textures.scene_color);
       glTexStorage2D(GL_TEXTURE_2D, 1, GL_RGBA8, width, height);
       glBindTexture (GL_TEXTURE_2D, 0);
 
-      newTexture(textures.scene_depthstencil, GL_TEXTURE_2D);
+      nvgl::newTexture(textures.scene_depthstencil, GL_TEXTURE_2D);
       glBindTexture (GL_TEXTURE_2D, textures.scene_depthstencil);
       glTexStorage2D(GL_TEXTURE_2D, 1, GL_DEPTH24_STENCIL8, width, height);
       glBindTexture (GL_TEXTURE_2D, 0);
     }
 
-    newFramebuffer(fbos.scene);
+    nvgl::newFramebuffer(fbos.scene);
     glBindFramebuffer(GL_FRAMEBUFFER,     fbos.scene);
     glFramebufferTexture(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,        textures.scene_color, 0);
     glFramebufferTexture(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, textures.scene_depthstencil, 0);
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
 
-    newTexture(textures.scene_depthlinear, GL_TEXTURE_2D);
+    nvgl::newTexture(textures.scene_depthlinear, GL_TEXTURE_2D);
     glBindTexture (GL_TEXTURE_2D, textures.scene_depthlinear);
     glTexStorage2D(GL_TEXTURE_2D, 1, GL_R32F, width, height);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
@@ -526,12 +521,12 @@ namespace ssao
     glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER,GL_NEAREST);
     glBindTexture (GL_TEXTURE_2D, 0);
 
-    newFramebuffer(fbos.depthlinear);
+    nvgl::newFramebuffer(fbos.depthlinear);
     glBindFramebuffer(GL_FRAMEBUFFER,     fbos.depthlinear);
     glFramebufferTexture(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,  textures.scene_depthlinear, 0);
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
-    newTexture(textures.scene_viewnormal, GL_TEXTURE_2D);
+    nvgl::newTexture(textures.scene_viewnormal, GL_TEXTURE_2D);
     glBindTexture (GL_TEXTURE_2D, textures.scene_viewnormal);
     glTexStorage2D(GL_TEXTURE_2D, 1, GL_RGBA8, width, height);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
@@ -540,7 +535,7 @@ namespace ssao
     glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER,GL_NEAREST);
     glBindTexture (GL_TEXTURE_2D, 0);
 
-    newFramebuffer(fbos.viewnormal);
+    nvgl::newFramebuffer(fbos.viewnormal);
     glBindFramebuffer(GL_FRAMEBUFFER,     fbos.viewnormal);
     glFramebufferTexture(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,  textures.scene_viewnormal, 0);
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
@@ -555,7 +550,7 @@ namespace ssao
     GLint swizzle[4] = {GL_RED,GL_RED,GL_RED,GL_RED};
 #endif
     
-    newTexture(textures.hbao_result, GL_TEXTURE_2D);
+    nvgl::newTexture(textures.hbao_result, GL_TEXTURE_2D);
     glBindTexture (GL_TEXTURE_2D, textures.hbao_result);
     glTexStorage2D(GL_TEXTURE_2D, 1, formatAO, width, height);
     glTexParameteriv(GL_TEXTURE_2D, GL_TEXTURE_SWIZZLE_RGBA, swizzle);
@@ -563,7 +558,7 @@ namespace ssao
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     glBindTexture (GL_TEXTURE_2D, 0);
 
-    newTexture(textures.hbao_blur, GL_TEXTURE_2D);
+    nvgl::newTexture(textures.hbao_blur, GL_TEXTURE_2D);
     glBindTexture (GL_TEXTURE_2D, textures.hbao_blur);
     glTexStorage2D(GL_TEXTURE_2D, 1, formatAO, width, height);
     glTexParameteriv(GL_TEXTURE_2D, GL_TEXTURE_SWIZZLE_RGBA, swizzle);
@@ -571,7 +566,7 @@ namespace ssao
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     glBindTexture (GL_TEXTURE_2D, 0);
 
-    newFramebuffer(fbos.hbao_calc);
+    nvgl::newFramebuffer(fbos.hbao_calc);
     glBindFramebuffer(GL_FRAMEBUFFER,     fbos.hbao_calc);
     glFramebufferTexture(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, textures.hbao_result, 0);
     glFramebufferTexture(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1, textures.hbao_blur, 0);
@@ -582,7 +577,7 @@ namespace ssao
     int quarterWidth  = ((width+3)/4);
     int quarterHeight = ((height+3)/4);
 
-    newTexture(textures.hbao2_deptharray, GL_TEXTURE_2D_ARRAY);
+    nvgl::newTexture(textures.hbao2_deptharray, GL_TEXTURE_2D_ARRAY);
     glBindTexture (GL_TEXTURE_2D_ARRAY, textures.hbao2_deptharray);
     glTexStorage3D(GL_TEXTURE_2D_ARRAY, 1, GL_R32F, quarterWidth, quarterHeight, HBAO_RANDOM_ELEMENTS);
     glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
@@ -606,7 +601,7 @@ namespace ssao
     }
 
 
-    newTexture(textures.hbao2_resultarray, GL_TEXTURE_2D_ARRAY);
+    nvgl::newTexture(textures.hbao2_resultarray, GL_TEXTURE_2D_ARRAY);
     glBindTexture (GL_TEXTURE_2D_ARRAY, textures.hbao2_resultarray);
     glTexStorage3D(GL_TEXTURE_2D_ARRAY, 1, formatAO, quarterWidth, quarterHeight, HBAO_RANDOM_ELEMENTS);
     glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
@@ -621,12 +616,12 @@ namespace ssao
       drawbuffers[layer] = GL_COLOR_ATTACHMENT0 + layer;
     }
 
-    newFramebuffer(fbos.hbao2_deinterleave);
+    nvgl::newFramebuffer(fbos.hbao2_deinterleave);
     glBindFramebuffer(GL_FRAMEBUFFER,fbos.hbao2_deinterleave);
     glDrawBuffers(NUM_MRT,drawbuffers);
     glBindFramebuffer(GL_FRAMEBUFFER,0);
 
-    newFramebuffer(fbos.hbao2_calc);
+    nvgl::newFramebuffer(fbos.hbao2_calc);
     glBindFramebuffer(GL_FRAMEBUFFER,fbos.hbao2_calc);
 #if USE_AO_LAYERED_SINGLEPASS == AO_LAYERED_IMAGE
     // this fbo will not have any attachments and therefore requires rasterizer to be configured
@@ -1124,7 +1119,7 @@ using namespace ssao;
 
 int main(int argc, const char** argv)
 {
-  NVPWindow::System system(argv[0], PROJECT_NAME);
+  NVPSystem system(argv[0], PROJECT_NAME);
   Sample sample;
   return sample.run(
     PROJECT_NAME,
