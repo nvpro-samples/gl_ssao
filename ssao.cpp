@@ -263,7 +263,6 @@ namespace ssao
     m_progManager.m_filetype = nvh::ShaderFileManager::FILETYPE_GLSL;
     m_progManager.addDirectory( std::string("GLSL_" PROJECT_NAME));
     m_progManager.addDirectory( exePath() + std::string(PROJECT_RELDIRECTORY));
-    //m_progManager.addDirectory( std::string(PROJECT_ABSDIRECTORY));
 
     m_progManager.registerInclude("common.h");
 
