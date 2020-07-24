@@ -639,7 +639,7 @@ namespace ssao
 
   bool Sample::begin()
   {
-    ImGuiH::Init(m_windowState.m_viewSize[0], m_windowState.m_viewSize[1], this);
+    ImGuiH::Init(m_windowState.m_winSize[0], m_windowState.m_winSize[1], this);
     ImGui::InitGL();
 
     glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
@@ -655,7 +655,7 @@ namespace ssao
     validated = validated && initProgram();
     validated = validated && initMisc();
     validated = validated && initScene();
-    validated = validated && initFramebuffers(m_windowState.m_viewSize[0],m_windowState.m_viewSize[1],m_tweak.samples);
+    validated = validated && initFramebuffers(m_windowState.m_winSize[0],m_windowState.m_winSize[1],m_tweak.samples);
 
     m_ui.enumAdd(GUI_ALGORITHM, ALGORITHM_NONE, "none");
     m_ui.enumAdd(GUI_ALGORITHM, ALGORITHM_HBAO_CACHEAWARE, "hbao cache-aware");
@@ -680,8 +680,8 @@ namespace ssao
 
   void Sample::processUI(double time)
   {
-    int width = m_windowState.m_viewSize[0];
-    int height = m_windowState.m_viewSize[1];
+    int width = m_windowState.m_winSize[0];
+    int height = m_windowState.m_winSize[1];
 
     // Update imgui configuration
     auto &imgui_io = ImGui::GetIO();
@@ -1004,7 +1004,7 @@ namespace ssao
     NV_PROFILE_GL_SECTION("Frame");
 
     m_control.m_sceneOrtho = m_tweak.ortho;
-    m_control.processActions(m_windowState.m_viewSize,
+    m_control.processActions(m_windowState.m_winSize,
       nvmath::vec2f(m_windowState.m_mouseCurrent[0],m_windowState.m_mouseCurrent[1]),
       m_windowState.m_mouseButtonFlags, m_windowState.m_mouseWheel);
 
@@ -1018,8 +1018,8 @@ namespace ssao
 
     processUI(time);
 
-    int width   = m_windowState.m_viewSize[0];
-    int height  = m_windowState.m_viewSize[1];
+    int width   = m_windowState.m_winSize[0];
+    int height  = m_windowState.m_winSize[1];
 
     m_projection.ortho       = m_control.m_sceneOrtho;
     m_projection.orthoheight = m_control.m_sceneOrthoZoom;
