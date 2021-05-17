@@ -77,7 +77,7 @@ The sample contains alternate codepaths for two additional optimizations, which 
 * ```USE_AO_LAYERED_SINGLEPASS```: In the cache-aware technique we update the layers of the ssao calculation all at once using image stores and attachment-les fbo or a geometry shader with layers, instead of rendering to each layer individually.
 
 ### Building
-Ideally clone this and other interesting [nvpro-samples](https://github.com/nvpro-samples) repositories into a common subdirectory. You will always need [shared_sources](https://github.com/nvpro-samples/shared_sources) and on Windows [shared_external](https://github.com/nvpro-samples/shared_external). The shared directories are searched either as subdirectory of the sample or one directory up. 
+Ideally, clone this and other interesting [nvpro-samples](https://github.com/nvpro-samples) repositories into a common subdirectory. You will always need [nvpro_core](https://github.com/nvpro-samples/nvpro_core). The nvpro_core is searched either as a subdirectory of the sample, or one directory up.
 
 If you are interested in multiple samples, you can use [build_all](https://github.com/nvpro-samples/build_all) CMAKE as entry point, it will also give you options to enable/disable individual samples when creating the solutions.
 
