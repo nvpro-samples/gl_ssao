@@ -760,7 +760,7 @@ void Sample::prepareHbaoData(const Projection& projection, int width, int height
 #if USE_AO_LAYERED_SINGLEPASS
   for(int i = 0; i < HBAO_RANDOM_ELEMENTS; i++)
   {
-    m_hbaoUbo.float2Offsets[i] = vec2(float(i % 4) + 0.5f, float(i / 4) + 0.5f);
+    m_hbaoUbo.float2Offsets[i] = vec4(float(i % 4) + 0.5f, float(i / 4) + 0.5f, 0.0f, 0.0f);
     m_hbaoUbo.jitters[i]       = m_hbaoRandom[i];
   }
 #endif
