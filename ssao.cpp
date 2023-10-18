@@ -735,7 +735,7 @@ void Sample::prepareHbaoData(const Projection& projection, int width, int height
   }
   else
   {
-    projScale = float(height) / (tanf(projection.fov * 0.5f) * 2.0f);
+    projScale = float(height) / (tanf(projection.fov * 0.5f * nv_to_rad) * 2.0f);
   }
 
   // radius
