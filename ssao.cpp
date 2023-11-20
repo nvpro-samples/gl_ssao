@@ -22,12 +22,13 @@
 
 #define DEBUG_FILTER 1
 
+#include <glm/glm.hpp>
+#include <glm/gtc/type_ptr.hpp>
+
 #include <include_gl.h>
 
 #include <imgui/backends/imgui_impl_gl.h>
 #include <imgui/imgui_helper.h>
-
-#include <nvmath/nvmath_glsltypes.h>
 
 #include <nvh/cameracontrol.hpp>
 #include <nvh/geometry.hpp>
@@ -141,12 +142,12 @@ class Sample : public nvgl::AppWindowProfilerGL
     {
       position = vertex.position;
       normal   = vertex.normal;
-      color    = nvmath::vec4(1.0f);
+      color    = glm::vec4(1.0f);
     }
 
-    nvmath::vec4 position;
-    nvmath::vec4 normal;
-    nvmath::vec4 color;
+    glm::vec4 position;
+    glm::vec4 normal;
+    glm::vec4 color;
   };
 
 
@@ -176,12 +177,12 @@ class Sample : public nvgl::AppWindowProfilerGL
       float aspect = float(width) / float(height);
       if(ortho)
       {
-        matrix = nvmath::ortho(-orthoheight * 0.5f * aspect, orthoheight * 0.5f * aspect, -orthoheight * 0.5f,
-                               orthoheight * 0.5f, nearplane, farplane);
+        matrix = glm::ortho(-orthoheight * 0.5f * aspect, orthoheight * 0.5f * aspect, -orthoheight * 0.5f,
+                            orthoheight * 0.5f, nearplane, farplane);
       }
       else
       {
-        matrix = nvmath::perspective(fov, aspect, nearplane, farplane);
+        matrix = glm::perspectiveRH_ZO(fov, aspect, nearplane, farplane);
       }
     }
   };
@@ -202,7 +203,7 @@ class Sample : public nvgl::AppWindowProfilerGL
 
   SceneData m_sceneUbo;
   HBAOData  m_hbaoUbo;
-  vec4f     m_hbaoRandom[HBAO_RANDOM_ELEMENTS * MAX_SAMPLES];
+  glm::vec4 m_hbaoRandom[HBAO_RANDOM_ELEMENTS * MAX_SAMPLES];
 
   bool begin();
   void processUI(double time);
@@ -250,23 +251,20 @@ bool Sample::initProgram()
 
   m_progManager.m_prepend = nvgl::ProgramManager::format("#define AO_LAYERED %d\n", USE_AO_LAYERED_SINGLEPASS);
 
-  programs.draw_scene =
-      m_progManager.createProgram(nvgl::ProgramManager::Definition(GL_VERTEX_SHADER, "scene.vert.glsl"),
-                                  nvgl::ProgramManager::Definition(GL_FRAGMENT_SHADER, "scene.frag.glsl"));
+  programs.draw_scene = m_progManager.createProgram(nvgl::ProgramManager::Definition(GL_VERTEX_SHADER, "scene.vert.glsl"),
+                                                    nvgl::ProgramManager::Definition(GL_FRAGMENT_SHADER, "scene.frag.glsl"));
 
   programs.bilateralblur =
       m_progManager.createProgram(nvgl::ProgramManager::Definition(GL_VERTEX_SHADER, "fullscreenquad.vert.glsl"),
                                   nvgl::ProgramManager::Definition(GL_FRAGMENT_SHADER, "bilateralblur.frag.glsl"));
 
-  programs.depth_linearize =
-      m_progManager.createProgram(nvgl::ProgramManager::Definition(GL_VERTEX_SHADER, "fullscreenquad.vert.glsl"),
-                                  nvgl::ProgramManager::Definition(GL_FRAGMENT_SHADER, "#define DEPTHLINEARIZE_MSAA 0\n",
-                                                                   "depthlinearize.frag.glsl"));
+  programs.depth_linearize = m_progManager.createProgram(
+      nvgl::ProgramManager::Definition(GL_VERTEX_SHADER, "fullscreenquad.vert.glsl"),
+      nvgl::ProgramManager::Definition(GL_FRAGMENT_SHADER, "#define DEPTHLINEARIZE_MSAA 0\n", "depthlinearize.frag.glsl"));
 
-  programs.depth_linearize_msaa =
-      m_progManager.createProgram(nvgl::ProgramManager::Definition(GL_VERTEX_SHADER, "fullscreenquad.vert.glsl"),
-                                  nvgl::ProgramManager::Definition(GL_FRAGMENT_SHADER, "#define DEPTHLINEARIZE_MSAA 1\n",
-                                                                   "depthlinearize.frag.glsl"));
+  programs.depth_linearize_msaa = m_progManager.createProgram(
+      nvgl::ProgramManager::Definition(GL_VERTEX_SHADER, "fullscreenquad.vert.glsl"),
+      nvgl::ProgramManager::Definition(GL_FRAGMENT_SHADER, "#define DEPTHLINEARIZE_MSAA 1\n", "depthlinearize.frag.glsl"));
 
   programs.viewnormal =
       m_progManager.createProgram(nvgl::ProgramManager::Definition(GL_VERTEX_SHADER, "fullscreenquad.vert.glsl"),
@@ -278,13 +276,11 @@ bool Sample::initProgram()
 
   programs.hbao_calc = m_progManager.createProgram(
       nvgl::ProgramManager::Definition(GL_VERTEX_SHADER, "fullscreenquad.vert.glsl"),
-      nvgl::ProgramManager::Definition(GL_FRAGMENT_SHADER, "#define AO_DEINTERLEAVED 0\n#define AO_BLUR 0\n",
-                                       "hbao.frag.glsl"));
+      nvgl::ProgramManager::Definition(GL_FRAGMENT_SHADER, "#define AO_DEINTERLEAVED 0\n#define AO_BLUR 0\n", "hbao.frag.glsl"));
 
   programs.hbao_calc_blur = m_progManager.createProgram(
       nvgl::ProgramManager::Definition(GL_VERTEX_SHADER, "fullscreenquad.vert.glsl"),
-      nvgl::ProgramManager::Definition(GL_FRAGMENT_SHADER, "#define AO_DEINTERLEAVED 0\n#define AO_BLUR 1\n",
-                                       "hbao.frag.glsl"));
+      nvgl::ProgramManager::Definition(GL_FRAGMENT_SHADER, "#define AO_DEINTERLEAVED 0\n#define AO_BLUR 1\n", "hbao.frag.glsl"));
 
   programs.hbao_blur = m_progManager.createProgram(
       nvgl::ProgramManager::Definition(GL_VERTEX_SHADER, "fullscreenquad.vert.glsl"),
@@ -299,16 +295,14 @@ bool Sample::initProgram()
 #if USE_AO_LAYERED_SINGLEPASS == AO_LAYERED_GS
       nvgl::ProgramManager::Definition(GL_GEOMETRY_SHADER, "fullscreenquad.geo.glsl"),
 #endif
-      nvgl::ProgramManager::Definition(GL_FRAGMENT_SHADER, "#define AO_DEINTERLEAVED 1\n#define AO_BLUR 0\n",
-                                       "hbao.frag.glsl"));
+      nvgl::ProgramManager::Definition(GL_FRAGMENT_SHADER, "#define AO_DEINTERLEAVED 1\n#define AO_BLUR 0\n", "hbao.frag.glsl"));
 
   programs.hbao2_calc_blur = m_progManager.createProgram(
       nvgl::ProgramManager::Definition(GL_VERTEX_SHADER, "fullscreenquad.vert.glsl"),
 #if USE_AO_LAYERED_SINGLEPASS == AO_LAYERED_GS
       nvgl::ProgramManager::Definition(GL_GEOMETRY_SHADER, "fullscreenquad.geo.glsl"),
 #endif
-      nvgl::ProgramManager::Definition(GL_FRAGMENT_SHADER, "#define AO_DEINTERLEAVED 1\n#define AO_BLUR 1\n",
-                                       "hbao.frag.glsl"));
+      nvgl::ProgramManager::Definition(GL_FRAGMENT_SHADER, "#define AO_DEINTERLEAVED 1\n#define AO_BLUR 1\n", "hbao.frag.glsl"));
 
   programs.hbao2_deinterleave =
       m_progManager.createProgram(nvgl::ProgramManager::Definition(GL_VERTEX_SHADER, "fullscreenquad.vert.glsl"),
@@ -342,7 +336,7 @@ bool Sample::initMisc()
     float Rand2 = static_cast<float>(rmt()) / 4294967296.0f;
 
     // Use random rotation angles in [0,2PI/NUM_DIRECTIONS)
-    float Angle       = 2.f * nv_pi * Rand1 / numDir;
+    float Angle       = glm::two_pi<float>() * Rand1 / numDir;
     m_hbaoRandom[i].x = cosf(Angle);
     m_hbaoRandom[i].y = sinf(Angle);
     m_hbaoRandom[i].z = Rand2;
@@ -425,7 +419,7 @@ bool Sample::initScene()
 
         pos.z = depth;
 
-        mat4 matrix = nvmath::translation_mat4(pos) * nvmath::scale_mat4(size);
+        mat4 matrix = glm::translate(glm::mat4(1.f), pos) * glm::scale(glm::mat4(1.f), size);
 
         uint oldverts = scene.getVerticesCount();
         uint oldinds  = scene.getTriangleIndicesCount();
@@ -665,9 +659,8 @@ bool Sample::begin()
   m_control.m_sceneOrbit     = vec3(0.0f);
   m_control.m_sceneDimension = float(globalscale);
   m_control.m_sceneOrthoZoom = m_control.m_sceneDimension;
-  m_control.m_viewMatrix =
-      nvmath::look_at(m_control.m_sceneOrbit - (vec3(0.4f, -0.35f, -0.6f) * m_control.m_sceneDimension * 0.9f),
-                      m_control.m_sceneOrbit, vec3(0, 1, 0));
+  m_control.m_viewMatrix = glm::lookAt(m_control.m_sceneOrbit - (vec3(0.4f, -0.35f, -0.6f) * m_control.m_sceneDimension * 0.9f),
+                                       m_control.m_sceneOrbit, vec3(0, 1, 0));
 
   m_projection.nearplane = m_control.m_sceneDimension * 0.01f;
   m_projection.farplane  = m_control.m_sceneDimension * 10.0f;
@@ -708,7 +701,7 @@ void Sample::processUI(double time)
 void Sample::prepareHbaoData(const Projection& projection, int width, int height)
 {
   // projection
-  const float* P = projection.matrix.get_value();
+  const float* P = glm::value_ptr(projection.matrix);
 
   float projInfoPerspective[] = {
       2.0f / (P[4 * 0 + 0]),                  // (x) * (R - L)/N
@@ -726,7 +719,7 @@ void Sample::prepareHbaoData(const Projection& projection, int width, int height
 
   int useOrtho        = projection.ortho ? 1 : 0;
   m_hbaoUbo.projOrtho = useOrtho;
-  m_hbaoUbo.projInfo  = useOrtho ? projInfoOrtho : projInfoPerspective;
+  m_hbaoUbo.projInfo  = useOrtho ? glm::make_vec4(projInfoOrtho) : glm::make_vec4(projInfoPerspective);
 
   float projScale;
   if(useOrtho)
@@ -901,9 +894,9 @@ void Sample::drawHbaoCacheAware(const Projection& projection, int width, int hei
 
     glUseProgram(m_progManager.get(programs.viewnormal));
 
-    glUniform4fv(0, 1, m_hbaoUbo.projInfo.get_value());
+    glUniform4fv(0, 1, glm::value_ptr(m_hbaoUbo.projInfo));
     glUniform1i(1, m_hbaoUbo.projOrtho);
-    glUniform2fv(2, 1, m_hbaoUbo.InvFullResolution.get_value());
+    glUniform2fv(2, 1, glm::value_ptr(m_hbaoUbo.InvFullResolution));
 
     nvgl::bindMultiTexture(GL_TEXTURE0, GL_TEXTURE_2D, textures.scene_depthlinear);
     glDrawArrays(GL_TRIANGLES, 0, 3);
@@ -1021,8 +1014,8 @@ void Sample::think(double time)
   NV_PROFILE_GL_SECTION("Frame");
 
   m_control.m_sceneOrtho = m_tweak.ortho;
-  m_control.processActions(m_windowState.m_winSize,
-                           nvmath::vec2f(m_windowState.m_mouseCurrent[0], m_windowState.m_mouseCurrent[1]),
+  m_control.processActions({m_windowState.m_winSize[0], m_windowState.m_winSize[1]},
+                           glm::vec2(m_windowState.m_mouseCurrent[0], m_windowState.m_mouseCurrent[1]),
                            m_windowState.m_mouseButtonFlags, m_windowState.m_mouseWheel);
 
   if(m_windowState.onPress(KEY_R))
@@ -1056,7 +1049,7 @@ void Sample::think(double time)
 
     glBindFramebuffer(GL_FRAMEBUFFER, fbos.scene);
 
-    nvmath::vec4 bgColor(0.2, 0.2, 0.2, 0.0);
+    glm::vec4 bgColor(0.2, 0.2, 0.2, 0.0);
     glClearBufferfv(GL_COLOR, 0, &bgColor.x);
 
     glClearDepth(1.0);
@@ -1065,11 +1058,11 @@ void Sample::think(double time)
 
     m_sceneUbo.viewport = uvec2(width, height);
 
-    nvmath::mat4 view = m_control.m_viewMatrix;
+    glm::mat4 view = m_control.m_viewMatrix;
 
     m_sceneUbo.viewProjMatrix = m_projection.matrix * view;
     m_sceneUbo.viewMatrix     = view;
-    m_sceneUbo.viewMatrixIT   = nvmath::transpose(nvmath::invert(view));
+    m_sceneUbo.viewMatrixIT   = glm::transpose(glm::inverse(view));
 
     glUseProgram(m_progManager.get(programs.draw_scene));
     glBindBufferBase(GL_UNIFORM_BUFFER, UBO_SCENE, buffers.scene_ubo);

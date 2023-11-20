@@ -29,7 +29,7 @@
 #ifdef __cplusplus
 namespace ssao
 {
-  using namespace nvmath;
+  using namespace glm;
 #endif
 
 struct SceneData {
